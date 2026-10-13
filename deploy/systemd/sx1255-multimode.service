@@ -1,0 +1,29 @@
+[Unit]
+Description=sx1255-multimode radio service (SX1255)
+Documentation=https://github.com/ok1lbc/sx1255-multimode
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/lib/sx1255-multimode
+StateDirectory=sx1255-multimode
+ExecStart=/usr/bin/sx1255-multimode -config /etc/sx1255-multimode/sx1255-multimode.yaml --log-level info
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+KillSignal=SIGTERM
+Environment=HOME=/var/lib/sx1255-multimode
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sx1255-multimode
+
+# Hardening: the daemon only needs GPIO/SPI/ALSA and the HTTP port.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

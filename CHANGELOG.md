@@ -1,0 +1,59 @@
+# Changelog
+
+Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
+
+## [Unreleased]
+
+### Opraveno
+
+- FM/SVXLink převaděč: ALSA playback na SX1255 podtékal (XRUN) na startu relace
+  i během dojezdu. DAC pak opakoval stará data, což na vzduchu znělo jako
+  pravidelný digitální šum. Bridge nyní drží TX stream živý tichou nosnou, když
+  SVXLink nemá připravené audio, a před vypnutím PTT vyprázdní buffer
+  (`drainTx`).
+- FM squelch se zavíral po jediném slabém bloku Goertzela, což sekalo audio;
+  nyní vyžaduje několik potvrzených bloků plus krátkou prodlevu.
+- FM příjem: horní propust audio (2,6 kHz) a rozladěná pre/de-emfáze
+  (100 µs RX vs 75 µs TX) zkreslovaly zvuk.
+
+### Změněno
+
+- FM zvukové tvarování je nově konfigurovatelné v YAML
+  (`rx_deemph_us`, `tx_preemph_us`, `rx_audio_lpf_hz`, `tx_audio_lpf_hz`).
+  Defaulty jsou laděné pro NFM 12,5 kHz: 75 µs pre/de-emfáze a 3 kHz audio
+  low-pass. Pro široké FM (25 kHz) zvedni audio filtry na ~4–5 kHz.
+
+## [1.0.0-rc1] — 2026-10-11
+
+První release candidate. Obsahuje kompletní multimódový framework a produkční
+robustnost, ale čeká na 7denní validaci na reálném SX1255 hardwaru.
+
+### Přidáno
+
+- SX1255 frontend (SPI + libgpiod + ALSA, 125 kSa/s duplex).
+- Plugin systém s arbitráží M17 > D-Star > FM a exkluzivním vlastnictvím relace.
+- M17: 1:1 port DSP z m17-gateway (DC removal, decimace, FM demod, AFC,
+  resampler, RRC, synchronizace, Viterbi, Golay, LSF/stream/packet).
+- D-Star: GMSK detekce, frame sync a validace FEC hlavičky (CRC).
+- FM: NFM diskriminátor a CTCSS detekce (Goertzel).
+- IQ capture/replay (endian-safe binární formát) a automatický IQ capture
+  s pre/post trigger okny.
+- Spectrum monitor (FFT/PSD/peak-hold/noise floor) a waterfall.
+- Web dashboard bez frameworků (`/`, `/api/status`, `/api/plugins`,
+  `/api/iq`, `/api/spectrum`, `/api/waterfall`, `/api/health`, `/api/system`).
+- Watchdog (HealthMonitor) s restartem subsystémů a IQ dumpem při poruše.
+- Logování (DEBUG/INFO/WARN/ERROR, konzole + rotující soubory, `--log-level`).
+- Persistované statistiky (`stats.json`).
+- Soak tester (`sx1255-soak`), benchmark (`sx1255-bench`), false positive audit
+  (`sx1255-fp-audit`), dataset replay (`--dataset`).
+- systemd služba s auto-startem a auto-restartem.
+- Dokumentace: architektura, nasazení, služba, troubleshooting, výkon.
+
+### Změněno
+
+- Verze CMake projektu nastavena na 1.0.0.
+
+### Známá omezení
+
+- Real-hardware validace (7 dní, reálný provoz, reálné poruchy) je PENDING —
+  viz `RELEASE_CHECKLIST.md` a `rc1-soak-report.md`.

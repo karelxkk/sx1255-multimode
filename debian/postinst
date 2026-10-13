@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = configure ]; then
+    # Deploy hook scripts as non-config files.
+    if [ -d /usr/share/sx1255-multimode/scripts ]; then
+        chmod 0755 /usr/share/sx1255-multimode/scripts/*.sh 2>/dev/null || true
+    fi
+
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable sx1255-multimode.service >/dev/null 2>&1 || true
+    fi
+fi
+
+exit 0

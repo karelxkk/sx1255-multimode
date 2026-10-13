@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Dataset metadata",
+  "type": "object",
+  "required": ["date", "rx_frequency_hz", "detected_mode", "expected_mode"],
+  "properties": {
+    "date":            {"type": "string"},
+    "rx_frequency_hz": {"type": "integer"},
+    "rssi_dbm":        {"type": "number"},
+    "detected_mode":   {"type": "string", "enum": ["FM", "D-Star", "M17", "unknown", ""]},
+    "expected_mode":   {"type": "string", "enum": ["fm", "dstar", "m17", "unknown"]},
+    "duration_seconds":{"type": "number"},
+    "source":          {"type": "string"}
+  }
+}

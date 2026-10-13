@@ -1,0 +1,94 @@
+frontend:
+  type: sx1255
+  rx_freq: 430975000
+  tx_freq: 438575000
+  tx_power: 10
+  squelch: -120
+  block_size: 2048
+  spi:
+    device: /dev/spidev0.0
+    speed: 500000
+  gpio:
+    chip: /dev/gpiochip0
+    reset: 25
+    # Tento HAT (B2) používá jen reset na GPIO25. RX/TX přepíná čip přes SPI,
+    # takže rx_enable/tx_enable/ptt jsou -1 (vypnuto). Pozor: GPIO18 je I2S
+    # BCLK, nikdy ho nepoužívat jako PTT!
+    tx_enable: -1
+    rx_enable: -1
+    ptt: -1
+  alsa:
+    capture: hw:GenericStereoAu,1,0
+    playback: hw:GenericStereoAu,0,0
+  lna_gain: 24
+  pga_gain: 0
+  dac_gain: -3
+  mixer_gain: -12
+
+modes:
+  fm:
+    enabled: true
+    ctcss_rx: 88.5
+    ctcss_tx: 88.5
+    hang_time_ms: 3000
+    # backend: local  = interní RX->TX bridge (výchozí)
+    # backend: svxlink = SVXLink dělá logiku/síť, multimode je RF<->audio bridge
+    backend: local
+    svxlink:
+      audio_capture: plughw:Loopback,1,0     # TX audio ze SVXLinku
+      audio_playback: plughw:Loopback,0,1    # RX audio do SVXLinku
+      pty: /run/svxlink/ptt                  # SVXLink PTT_TYPE=PTY
+      sql_pty: /run/svxlink/sql              # SQL_DET=SERIAL (CTS)
+      sql_pty_owner: svxlink                 # vlastník slave PTY (může být prázdné)
+      audio_rate: 16000
+      rx_max_dev_hz: 2500
+      tx_dev_hz: 2500
+      tx_gain: 1.75
+      # Zvukové tvarování (default = NFM 12.5 kHz).  Pro široké FM (25 kHz)
+      # zvedni rx_audio_lpf_hz / tx_audio_lpf_hz na ~4000-5000.
+      rx_deemph_us: 75            # RX de-emfáze
+      tx_preemph_us: 75           # TX pre-emfáze
+      rx_audio_lpf_hz: 3000       # RX audio low-pass
+      tx_audio_lpf_hz: 3000       # TX audio low-pass
+  dstar:
+    enabled: true
+  m17:
+    enabled: true
+    callsign: N0CALL
+    reflector:
+      enabled: false
+      host: reflector.example.org
+      port: 17000
+      module: A
+
+# Náhrada reálného rádia IQ souborem:
+#   frontend.type: replay   +   replay.file: capture.iq
+# Záznam reálného provozu při běhu na SX1255:
+#   recording.enabled: true
+recording:
+  enabled: false
+  file: capture.iq
+
+replay:
+  enabled: false
+  file: capture.iq
+
+# Diagnostika v prohlížeči (http://<ip>:8080/):
+#   spektrum, waterfall, RSSI, aktivní plugin, detekční metriky.
+spectrum:
+  enabled: true
+  fft_size: 4096
+  update_hz: 5
+  waterfall_rows: 500
+  waterfall_bins: 256
+
+# Automatické uložení IQ záznamu (pre + post okno) při podezřelé události.
+automatic_capture:
+  enabled: false
+  directory: /var/lib/sx1255-multimode
+  pre_seconds: 10
+  post_seconds: 10
+  trigger:
+    false_positive: true
+    unknown_signal: true
+    crash: true

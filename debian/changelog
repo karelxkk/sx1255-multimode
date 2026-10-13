@@ -1,0 +1,7 @@
+sx1255-multimode (1.0.0~rc1-1) unstable; urgency=medium
+
+  * First release candidate for real-hardware deployment.
+  * FM (CTCSS), D-Star and M17 plugins over a shared IQ stream.
+  * Spectrum/waterfall dashboard, IQ capture/replay, watchdog, soak test.
+
+ -- Karel Kadlec (OK1LBC) <xkk@post.cz>  Sat, 11 Oct 2026 00:00:00 +0000

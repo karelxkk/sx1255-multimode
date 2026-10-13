@@ -1,0 +1,38 @@
+@startuml sx1255-multimode architecture
+
+title sx1255-multimode — architektura komponent
+
+package "RF Frontend" {
+  interface ISX1255
+  class RadioFrontend
+  class NullSX1255
+  interface ITransmit
+  RadioFrontend ..|> ITransmit
+  RadioFrontend o-- ISX1255
+  NullSX1255 ..|> ISX1255
+}
+
+package "Core" {
+  class IQDispatcher
+  class SessionManager
+  class PluginRegistry
+}
+
+package "Plugins" {
+  interface IModePlugin
+  class FmPlugin
+  class DStarPlugin
+  class M17Plugin
+  FmPlugin ..|> IModePlugin
+  DStarPlugin ..|> IModePlugin
+  M17Plugin ..|> IModePlugin
+}
+
+RadioFrontend --> IQDispatcher : IQBlock
+IQDispatcher --> PluginRegistry : detekce
+IQDispatcher --> SessionManager : arbitráž/vlastnictví
+PluginRegistry o-- IModePlugin
+SessionManager o-- IModePlugin : vlastník
+IModePlugin --> ITransmit : vysílání
+
+@enduml

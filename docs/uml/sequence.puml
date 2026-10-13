@@ -1,0 +1,31 @@
+@startuml sx1255-multimode sequence
+
+title Detekce a exkluzivní vlastnictví
+
+actor Radio as Frontend
+participant "IQDispatcher" as D
+participant "SessionManager" as S
+participant "M17Plugin" as M17
+participant "FmPlugin" as FM
+
+Frontend -> D : IQBlock (monitoring)
+D -> M17 : detect(block)
+D -> FM : detect(block)
+M17 --> D : Detection{true, 0.9}
+FM --> D : Detection{false}
+D -> S : evaluateDetections(...)
+S -> M17 : startSession(ctx)
+D -> Frontend : (další blok)
+
+Frontend -> D : IQBlock (exclusive)
+D -> M17 : process(block)
+M17 --> D : true
+
+Frontend -> D : IQBlock (konec relace)
+D -> M17 : process(block)
+M17 --> D : false
+D -> S : finishSession()
+S -> M17 : stopSession()
+S -> S : RETURN_TO_IDLE -> IDLE
+
+@enduml
