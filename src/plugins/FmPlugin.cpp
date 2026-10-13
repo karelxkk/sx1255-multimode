@@ -92,6 +92,12 @@ public:
         const float confidence = static_cast<float>(
             std::clamp(presence / (2.0 * kToneThreshold), 0.0, 1.0));
 
+        // Drive the SVXLink squelch from the local carrier even outside an FM
+        // session, so a local station can key up during SVXLink's hang tail
+        // (state ACTIVE_SVXLINK) without waiting for a new session.
+        if (m_useSvxlink)
+            driveSql(detected, std::chrono::steady_clock::now());
+
         if (detected && m_stats)
             m_stats->recordDetection(Mode::FM);
         m_lastConfidence = confidence;
@@ -142,33 +148,15 @@ public:
                 return true;
             }
 
-            if (carrier) {
-                m_carrierLostAt = {};
-                m_carrierLostBlocks = 0;
-                if (m_sqlPty && !m_sqlOpen) {
-                    m_sqlPty->set(true);
-                    m_sqlOpen = true;
-                }
-                if (m_bridge)
-                    m_bridge->pushRxIq(block.samples, block.count);
-                return true;
-            }
+            if (carrier && m_bridge)
+                m_bridge->pushRxIq(block.samples, block.count);
 
             // Squelch must follow the RF carrier, not SVXLink's PTT.  Writing
             // 'Z' only after SVXLink releases PTT deadlocks the two: SVXLink
             // waits for the squelch to close before dropping PTT.
-            if (m_sqlPty && m_sqlOpen) {
-                if (m_carrierLostAt == std::chrono::steady_clock::time_point{})
-                    m_carrierLostAt = now;
-                const bool lostLongEnough =
-                    now - m_carrierLostAt >=
-                    std::chrono::milliseconds(kSquelchCloseDelayMs);
-                const bool confirmed = ++m_carrierLostBlocks >= kSquelchCloseBlocks;
-                if (lostLongEnough && confirmed) {
-                    m_sqlPty->set(false);
-                    m_sqlOpen = false;
-                }
-            }
+            driveSql(carrier, now);
+            if (carrier)
+                return true;
 
             // Squelch is closed: stop feeding receiver noise into SVXLink so
             // the hang tail stays quiet instead of producing a noise burst.
@@ -256,6 +244,38 @@ private:
         m_bridge->start(tx);
         m_bridge->setArbiter(m_arbiter.load());
         m_bridge->setSessionActive(m_active);
+    }
+
+    // Drive the SVXLink squelch (SQL PTY) from the local RF carrier.  Called
+    // from detect() (monitoring and arbiter-only states such as the hang tail)
+    // and from process() (active session) so a local station can always be
+    // received, even while SVXLink holds the transmitter.
+    void driveSql(bool carrier, std::chrono::steady_clock::time_point now)
+    {
+        if (!m_sqlPty)
+            return;
+
+        if (carrier) {
+            m_carrierLostAt = {};
+            m_carrierLostBlocks = 0;
+            if (!m_sqlOpen) {
+                m_sqlPty->set(true);
+                m_sqlOpen = true;
+            }
+            return;
+        }
+
+        if (!m_sqlOpen)
+            return;
+        if (m_carrierLostAt == std::chrono::steady_clock::time_point{})
+            m_carrierLostAt = now;
+        const bool lostLongEnough =
+            now - m_carrierLostAt >= std::chrono::milliseconds(kSquelchCloseDelayMs);
+        const bool confirmed = ++m_carrierLostBlocks >= kSquelchCloseBlocks;
+        if (lostLongEnough && confirmed) {
+            m_sqlPty->set(false);
+            m_sqlOpen = false;
+        }
     }
 
     // Feed one IQ block through the discriminator.  When tx is true, bridge

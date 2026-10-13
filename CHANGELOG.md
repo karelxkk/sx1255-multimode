@@ -6,6 +6,10 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Opraveno
 
+- Klíčování během dojezdu: když SVXLink drží TX (`ACTIVE_SVXLINK`, přehrává
+  dojezd), místní stanice teď může klíčovat. SQL se nově řídí místní nosnou i
+  mimo aktivní FM session (v `detect()`), takže se otevře okamžitě, jakmile
+  místní stanice zaklíčuje, a SVXLink dojezd přeruší.
 - FM TX přestal vysílat (`SX1255 playback write failed: File descriptor in bad
   state (-77)`): `drainTx` uvedl playback do SETUP a souběžný zápis TX vlákna
   skončil chybou, kterou `writeIQ` neznal. TX vlákno se teď zastaví před
