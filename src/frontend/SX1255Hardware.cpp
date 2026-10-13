@@ -44,8 +44,12 @@ constexpr std::uint8_t kModeMask         = 0x0F;
 
 constexpr std::uint8_t kExpectedVersion = 0x11;
 constexpr int kSampleRate = 125000;
-// ~65 ms of silent carrier written at PTT-on to prime the TX playback ring.
-constexpr snd_pcm_uframes_t kTxPrefillFrames = 8192;
+// Silent carrier written at PTT-on to prime the TX playback ring.  The FM/TX
+// workers keep the ring at roughly this level, so it also sets the headroom
+// against a scheduling stall: too small and the ring underruns (XRUN), which
+// the DAC turns into an audible burst of interference.  ~260 ms is a good
+// balance on the Pi Zero 2 W.
+constexpr snd_pcm_uframes_t kTxPrefillFrames = 32768;
 
 std::uint8_t lnaCode(int db)
 {

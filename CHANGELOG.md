@@ -6,6 +6,10 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Opraveno
 
+- FM TX rušení v dojezdu: playback ring měl při klíčování jen ~65 ms rezervy,
+  takže zpoždění TX vlákna (scheduling) vyvolalo XRUN a glitch na DAC, který
+  se na vzduchu projevil jako rušení. Předplnění ring tiché nosné při PTT-on
+  je teď ~260 ms.
 - Digitální šum na začátku vysílání/dojezdu: playback ring byl při klíčování
   prázdný a než přišel první IQ blok, I2S ho vyprázdnil (XRUN), což se na
   vzduchu projevilo jako pravidelný digitální šum. `setPtt(true)` teď před
