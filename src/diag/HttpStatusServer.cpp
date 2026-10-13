@@ -285,6 +285,7 @@ void HttpStatusServer::run()
 
         std::string response = "HTTP/1.1 " + status + "\r\n"
                                "Content-Type: " + contentType + "\r\n"
+                               "Cache-Control: no-store, max-age=0\r\n"
                                "Connection: close\r\n"
                                "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
         ::send(client, response.data(), response.size(), MSG_NOSIGNAL);
