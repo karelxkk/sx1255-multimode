@@ -28,6 +28,21 @@ vyžadovat změnu frontend vrstvy.*
 
 Plánované: DMR, C4FM, POCSAG, APRS, AX.25, FreeDV, Codec2 experimenty.
 
+## Síťový zdroj (směr síť → RF)
+
+Co se vrací ze sítě na RF, se řídí naposledy použitým lokálním (RX) módem:
+
+- výchozí je **FM/SVXLink** (M17 a D-Star ze sítě blokované),
+- po lokálním klíčování se zdroj přepne: M17 → M17, FM → SVXLink,
+  D-Star → D-Star.
+
+Aktuální volba je v `/api/status` (`network_mode`) a na dashboardu jako
+„síť". Podrobnosti v [docs/session-manager.md](docs/session-manager.md).
+
+FM/SVXLink zvukové tvarování (default NFM 12,5 kHz) je v YAML sekci
+`modes.fm.svxlink`: `rx_deemph_us`, `tx_preemph_us`, `rx_audio_lpf_hz`,
+`tx_audio_lpf_hz` (pro široké FM 25 kHz zvedni audio filtry na ~4–5 kHz).
+
 ## Požadavky na build
 
 - CMake >= 3.20
