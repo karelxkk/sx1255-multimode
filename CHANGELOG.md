@@ -6,6 +6,11 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Opraveno
 
+- FM TX přestal vysílat (`SX1255 playback write failed: File descriptor in bad
+  state (-77)`): `drainTx` uvedl playback do SETUP a souběžný zápis TX vlákna
+  skončil chybou, kterou `writeIQ` neznal. TX vlákno se teď zastaví před
+  unkey a `writeIQ` se umí zotavit z `-EPIPE`/`-ESTRPIPE`/`-EBADFD`/`-ENODEV`
+  (prepare + omezený retry), takže jediný glitch nezabije FM vysílač.
 - RX cesta (RF -> SVXLink) byla mrtvá, kdykoli arbiter držel TX bez plugin
   session (`ACTIVE_SVXLINK` / `ACTIVE_M17_NETWORK`): dispatcher zahodil celý IQ
   blok a `owner` byl prázdný. FM plugin teď krmí RX do SVXLink bridge průběžně

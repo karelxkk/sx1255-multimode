@@ -337,15 +337,13 @@ void FmSvxlinkBridge::updatePtt()
 
     if (!want) {
         if (m_pttKeyed) {
+            // Stop the TX worker first so it cannot write into the stream while
+            // we tear it down (a concurrent write after the drop/drain left the
+            // playback in a bad state and killed the FM transmitter).
+            m_pttKeyed = false;
             if (m_tx) {
-                // Flush the queued FM audio before the TX PA is switched off.
-                // Without this the stream is killed mid-buffer, the ALSA
-                // playback goes into XRUN and the next session starts with a
-                // corrupted, stale ring buffer.
-                m_tx->drainTx();
                 m_tx->setPtt(false);
             }
-            m_pttKeyed = false;
         }
         if (m_pttReserved) {
             if (arb)

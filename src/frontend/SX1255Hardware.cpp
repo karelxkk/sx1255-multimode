@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -481,6 +482,7 @@ bool SX1255Hardware::writeIQ(const ComplexFloat* samples, std::size_t count)
     }
 
     std::size_t off = 0;
+    int recoveries = 0;
     while (off < count) {
         const snd_pcm_sframes_t written = snd_pcm_writei(
             m_playback, buf.data() + off * 2,
@@ -488,19 +490,29 @@ bool SX1255Hardware::writeIQ(const ComplexFloat* samples, std::size_t count)
         if (written >= 0) {
             off += static_cast<std::size_t>(written);
             m_txSamples += static_cast<std::uint64_t>(written);
+            recoveries = 0;
             continue;
         }
 
         m_alsaErrors++;
-        if (written == -EPIPE || written == -ESTRPIPE) {
-            std::fprintf(stderr, "SX1255 playback EPIPE (state=%d), recovering\n",
-                         static_cast<int>(snd_pcm_state(m_playback)));
-            snd_pcm_prepare(m_playback);
-            continue;
-        }
         if (written == -EAGAIN) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
+        }
+        // Recoverable stream-state errors: underrun/overrun (-EPIPE), resume
+        // (-ESTRPIPE), a stream left in SETUP/OPEN after a drain or a dropped
+        // descriptor (-EBADFD), or a temporarily gone device (-ENODEV).  Always
+        // re-prepare and retry a bounded number of times so a single glitch in
+        // the TX chain cannot silently kill the FM/ M17 transmitter.
+        if (written == -EPIPE || written == -ESTRPIPE ||
+            written == -EBADFD || written == -ENODEV) {
+            if (recoveries++ < 16) {
+                std::fprintf(stderr, "SX1255 playback recover: %s (state=%d)\n",
+                             snd_strerror(static_cast<int>(written)),
+                             static_cast<int>(snd_pcm_state(m_playback)));
+                snd_pcm_prepare(m_playback);
+                continue;
+            }
         }
         std::fprintf(stderr, "SX1255 playback write failed: %s (%ld)\n",
                      snd_strerror(static_cast<int>(written)),
