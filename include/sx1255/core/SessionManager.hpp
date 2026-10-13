@@ -86,6 +86,11 @@ public:
     bool acquireTx(Mode mode) override;
     void releaseTx() override;
 
+    // Mode the operator last used on a local (RF) reception.  A network source
+    // is only allowed to transmit back to RF when it matches this mode, so the
+    // operator keeps hearing what they last worked.  Defaults to FM/SVXLink.
+    Mode lastLocalMode() const;
+
     static State stateForMode(Mode mode);
     static const char* toString(State state);
 
@@ -102,6 +107,7 @@ private:
     std::shared_ptr<IModePlugin> m_owner;
     std::uint64_t           m_sessionId = 0;
     std::uint64_t           m_sessionCounter = 0;
+    Mode                    m_lastLocalMode = Mode::FM;
     std::chrono::steady_clock::time_point m_activeSince{};
     std::chrono::steady_clock::time_point m_returnSince{};
     SystemStatistics* m_stats = nullptr;

@@ -3,6 +3,8 @@
 #include "sx1255/diag/SystemStatistics.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <utility>
 
 namespace sx1255 {
@@ -64,6 +66,12 @@ std::uint64_t SessionManager::activeSessionId() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_sessionId;
+}
+
+Mode SessionManager::lastLocalMode() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_lastLocalMode;
 }
 
 void SessionManager::start()
@@ -137,6 +145,13 @@ IModePlugin* SessionManager::evaluateDetections(const std::vector<DetectionRepor
             granted = report.plugin;
             m_owner = report.plugin;
             m_state = stateForMode(report.plugin->mode());
+            // Remember the mode the operator just worked locally so the
+            // matching network source is the one allowed back onto RF.
+            if (report.plugin->mode() != m_lastLocalMode)
+                std::fprintf(stderr, "ARB: network source -> %s (last local mode)\n",
+                             report.plugin->mode() == Mode::M17 ? "M17"
+                                 : (report.plugin->mode() == Mode::DStar ? "D-Star" : "FM/SVXLink"));
+            m_lastLocalMode = report.plugin->mode();
             m_sessionId = ++m_sessionCounter;
             m_activeSince = Clock::now();
             break;
@@ -161,6 +176,24 @@ bool SessionManager::acquireTx(Mode mode)
     std::lock_guard<std::mutex> lock(m_mutex);
     if (isActiveState(m_state) || m_state == State::Timeout)
         return false;
+
+    // Only the network source matching the last locally used mode may transmit
+    // back to RF.  With the default (FM) SVXLink is let through and M17/D-Star
+    // network audio stays blocked; after a local M17/D-Star session that mode's
+    // network audio is let through instead.
+    if (mode != m_lastLocalMode) {
+        static auto lastLog = Clock::time_point{};
+        const auto now = Clock::now();
+        if (now - lastLog > std::chrono::seconds(5)) {
+            lastLog = now;
+            std::fprintf(stderr,
+                         "ARB: network TX %s blocked (last local mode is %s)\n",
+                         mode == Mode::M17 ? "M17" : (mode == Mode::DStar ? "D-Star" : "FM"),
+                         m_lastLocalMode == Mode::M17 ? "M17"
+                             : (m_lastLocalMode == Mode::DStar ? "D-Star" : "FM"));
+        }
+        return false;
+    }
 
     m_owner.reset();
     m_state = (mode == Mode::FM) ? State::ActiveSvxlink : State::ActiveM17Network;
