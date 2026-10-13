@@ -80,6 +80,48 @@ int dacAttenuationForPower(dBm power)
     return -9;
 }
 
+bool setAlsaParams(snd_pcm_t* pcm, snd_pcm_stream_t stream)
+{
+    snd_pcm_hw_params_t* params = nullptr;
+    snd_pcm_hw_params_alloca(&params);
+    snd_pcm_hw_params_any(pcm, params);
+    if (snd_pcm_hw_params_set_access(pcm, params, SND_PCM_ACCESS_RW_INTERLEAVED) < 0)
+        return false;
+    if (snd_pcm_hw_params_set_format(pcm, params, SND_PCM_FORMAT_S32_LE) < 0)
+        return false;
+    if (snd_pcm_hw_params_set_channels(pcm, params, 2) < 0)
+        return false;
+    unsigned int rate = kSampleRate;
+    if (snd_pcm_hw_params_set_rate_near(pcm, params, &rate, nullptr) < 0)
+        return false;
+    snd_pcm_uframes_t period = 4096;
+    snd_pcm_hw_params_set_period_size_near(pcm, params, &period, nullptr);
+    snd_pcm_uframes_t buffer = 65536;
+    snd_pcm_hw_params_set_buffer_size_near(pcm, params, &buffer);
+    if (snd_pcm_hw_params(pcm, params) < 0)
+        return false;
+
+    snd_pcm_hw_params_t* actual = nullptr;
+    snd_pcm_hw_params_alloca(&actual);
+    snd_pcm_hw_params_current(pcm, actual);
+    unsigned int gotRate = 0;
+    unsigned int gotChannels = 0;
+    snd_pcm_uframes_t gotPeriod = 0;
+    snd_pcm_uframes_t gotBuffer = 0;
+    snd_pcm_hw_params_get_rate(actual, &gotRate, nullptr);
+    snd_pcm_hw_params_get_channels(actual, &gotChannels);
+    snd_pcm_hw_params_get_period_size(actual, &gotPeriod, nullptr);
+    snd_pcm_hw_params_get_buffer_size(actual, &gotBuffer);
+    std::fprintf(stderr,
+                 "SX1255 ALSA %s: rate=%u, channels=%u, period=%lu, buffer=%lu\n",
+                 stream == SND_PCM_STREAM_CAPTURE ? "capture" : "playback",
+                 gotRate, gotChannels,
+                 static_cast<unsigned long>(gotPeriod),
+                 static_cast<unsigned long>(gotBuffer));
+    (void)stream;
+    return snd_pcm_prepare(pcm) >= 0;
+}
+
 }  // namespace
 
 std::uint32_t sx1255FreqToReg(std::uint32_t hz)
@@ -241,37 +283,65 @@ bool SX1255Hardware::setPtt(bool on)
         m_gpio->setTxEnable(on);
     }
     if (on) {
-        // Mirror m17-gateway's recoverALSA(): return the playback stream to a
-        // clean PREPARED state before every transmission so the preamble/LSF
-        // is never clipped by a stale XRUN state from a previous session.
-        std::lock_guard<std::mutex> lock(m_alsaMutex);
-        if (m_playback) {
-            snd_pcm_drop(m_playback);
-            snd_pcm_prepare(m_playback);
-            // Pre-fill the playback ring with a short silent carrier so the
-            // stream cannot underrun (XRUN) in the window between enabling the
-            // TX clock and the plugin's first IQ block.  A start-of-over
-            // underrun is audible as a periodic digital-noise burst.
-            std::vector<std::int32_t> prefill(kTxPrefillFrames * 2, 0);
-            snd_pcm_writei(m_playback, prefill.data(), kTxPrefillFrames);
+        // No data may reach the I2S lines while the chip switches RX<->TX:
+        // close the previous stream and open a fresh, empty one before the TX
+        // clock comes up.
+        {
+            std::lock_guard<std::mutex> lock(m_alsaMutex);
+            if (!reopenTxPlayback())
+                std::fprintf(stderr, "SX1255: TX playback reopen failed\n");
         }
         if (!enableTx(true))
             return false;
-        // Let the TX PLL lock before IQ is written, like m17-gateway's
-        // startTX: writing immediately after the PA switches on corrupts the
-        // beginning of the waveform while the I2S master clock stabilizes.
+        bool locked = false;
         for (int i = 0; i < 100; ++i) {
             std::uint8_t status = 0;
             if (readReg(kRegPLLStatus, status) && (status & kPllTxLock)) {
                 std::fprintf(stderr, "SX1255 TX PLL locked after %d ms\n", i + 1);
-                return true;
+                locked = true;
+                break;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        std::fprintf(stderr, "SX1255 TX PLL lock timeout (100 ms)\n");
+        if (!locked)
+            std::fprintf(stderr, "SX1255 TX PLL lock timeout (100 ms)\n");
+        // Pre-fill only once the clock is running, so the stream cannot
+        // underrun in the window before the first IQ block arrives.
+        {
+            std::lock_guard<std::mutex> lock(m_alsaMutex);
+            if (m_playback) {
+                std::vector<std::int32_t> prefill(kTxPrefillFrames * 2, 0);
+                snd_pcm_writei(m_playback, prefill.data(), kTxPrefillFrames);
+            }
+        }
         return true;   // best effort if the lock bit never appears
     }
+
+    // Stop the stream first so nothing is clocked into the I2S during the
+    // TX->RX switch, then turn the TX off.
+    {
+        std::lock_guard<std::mutex> lock(m_alsaMutex);
+        if (m_playback)
+            snd_pcm_drop(m_playback);
+    }
     return enableTx(false);
+}
+
+bool SX1255Hardware::reopenTxPlayback()
+{
+    if (m_playback) {
+        snd_pcm_close(m_playback);
+        m_playback = nullptr;
+    }
+    const std::string play = m_config.alsaPlayback.empty() ? "default" : m_config.alsaPlayback;
+    if (snd_pcm_open(&m_playback, play.c_str(), SND_PCM_STREAM_PLAYBACK, 0) < 0)
+        return false;
+    if (!setAlsaParams(m_playback, SND_PCM_STREAM_PLAYBACK)) {
+        snd_pcm_close(m_playback);
+        m_playback = nullptr;
+        return false;
+    }
+    return true;
 }
 
 double SX1255Hardware::readRssi()
@@ -287,52 +357,12 @@ bool SX1255Hardware::setSquelch(dBm level)
 
 bool SX1255Hardware::openAlsa()
 {
-    auto setParams = [](snd_pcm_t* pcm, snd_pcm_stream_t stream) -> bool {
-        snd_pcm_hw_params_t* params = nullptr;
-        snd_pcm_hw_params_alloca(&params);
-        snd_pcm_hw_params_any(pcm, params);
-        if (snd_pcm_hw_params_set_access(pcm, params, SND_PCM_ACCESS_RW_INTERLEAVED) < 0)
-            return false;
-        if (snd_pcm_hw_params_set_format(pcm, params, SND_PCM_FORMAT_S32_LE) < 0)
-            return false;
-        if (snd_pcm_hw_params_set_channels(pcm, params, 2) < 0)
-            return false;
-        unsigned int rate = kSampleRate;
-        if (snd_pcm_hw_params_set_rate_near(pcm, params, &rate, nullptr) < 0)
-            return false;
-        snd_pcm_uframes_t period = 4096;
-        snd_pcm_hw_params_set_period_size_near(pcm, params, &period, nullptr);
-        snd_pcm_uframes_t buffer = 65536;
-        snd_pcm_hw_params_set_buffer_size_near(pcm, params, &buffer);
-        if (snd_pcm_hw_params(pcm, params) < 0)
-            return false;
-        snd_pcm_hw_params_t* actual = nullptr;
-        snd_pcm_hw_params_alloca(&actual);
-        snd_pcm_hw_params_current(pcm, actual);
-        unsigned int gotRate = 0;
-        unsigned int gotChannels = 0;
-        snd_pcm_uframes_t gotPeriod = 0;
-        snd_pcm_uframes_t gotBuffer = 0;
-        snd_pcm_hw_params_get_rate(actual, &gotRate, nullptr);
-        snd_pcm_hw_params_get_channels(actual, &gotChannels);
-        snd_pcm_hw_params_get_period_size(actual, &gotPeriod, nullptr);
-        snd_pcm_hw_params_get_buffer_size(actual, &gotBuffer);
-        std::fprintf(stderr,
-                     "SX1255 ALSA %s: rate=%u, channels=%u, period=%lu, buffer=%lu\n",
-                     stream == SND_PCM_STREAM_CAPTURE ? "capture" : "playback",
-                     gotRate, gotChannels,
-                     static_cast<unsigned long>(gotPeriod),
-                     static_cast<unsigned long>(gotBuffer));
-        (void)stream;
-        return snd_pcm_prepare(pcm) >= 0;
-    };
-
     const std::string cap = m_config.alsaCapture.empty() ? "default" : m_config.alsaCapture;
     const std::string play = m_config.alsaPlayback.empty() ? "default" : m_config.alsaPlayback;
 
     if (snd_pcm_open(&m_capture, cap.c_str(), SND_PCM_STREAM_CAPTURE, 0) < 0)
         return false;
-    if (!setParams(m_capture, SND_PCM_STREAM_CAPTURE)) {
+    if (!setAlsaParams(m_capture, SND_PCM_STREAM_CAPTURE)) {
         snd_pcm_close(m_capture);
         m_capture = nullptr;
         return false;
@@ -343,7 +373,7 @@ bool SX1255Hardware::openAlsa()
         m_capture = nullptr;
         return false;
     }
-    if (!setParams(m_playback, SND_PCM_STREAM_PLAYBACK)) {
+    if (!setAlsaParams(m_playback, SND_PCM_STREAM_PLAYBACK)) {
         snd_pcm_close(m_capture);
         snd_pcm_close(m_playback);
         m_capture = nullptr;

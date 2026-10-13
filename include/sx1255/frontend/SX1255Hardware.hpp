@@ -99,6 +99,7 @@ private:
 
     bool openAlsa();
     void closeAlsa();
+    bool reopenTxPlayback();
     void captureThread();
 
     SX1255HardwareConfig m_config;

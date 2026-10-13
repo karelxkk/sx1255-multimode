@@ -1,4 +1,4 @@
-# Release Notes — sx1255-multimode v1.0.0-rc1
+# Release Notes — sx1255-multimode v1.0.0-rc3
 
 ## Co to je
 
@@ -8,9 +8,9 @@ a režimy (FM+CTCSS, D-Star, M17) jako nezávislé pluginy.
 
 ## Stav release
 
-**v1.0.0-rc1** — software je funkčně kompletní a buildovatelný, ale **RC1_READY
-= false**, dokud neproběhne 7denní validace na reálném hardwaru (SX1255 HAT +
-Pi Zero 2 W + reálný provoz). Viz `RELEASE_CHECKLIST.md`.
+**v1.0.0-rc3** — FM/SVXLink TX přepínání RX↔TX je opravené tak, aby do I2S
+netečla žádná data během přepnutí (viz `CHANGELOG.md`). Hardwarová validace na
+reálném SX1255 HAT stále probíhá; viz `RELEASE_CHECKLIST.md`.
 
 ## Hlavní schopnosti
 
@@ -36,8 +36,6 @@ Dashboard pak běží na `http://<ip-pi>:8080/`.
 
 ## Známé problémy
 
-- FM plugin má zatím jen detekci CTCSS; kompletní NFM audio/TX řetězec je
-  plánován v další iteraci.
 - Hardwarová validace na reálném SX1255 je PENDING.
 
 ## Autor

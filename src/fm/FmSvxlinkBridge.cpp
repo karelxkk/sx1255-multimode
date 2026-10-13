@@ -336,20 +336,10 @@ void FmSvxlinkBridge::updatePtt()
     ITxArbiter* arb = m_arbiter.load();
 
     if (!want) {
-        if (m_pttKeyed) {
-            // Stop the TX worker first so it cannot write into the stream while
-            // we tear it down (a concurrent write after the drop/drain left the
-            // playback in a bad state and killed the FM transmitter).
+        // Physical TX-off and the arbiter release are done by the TX worker
+        // (the single owner of the SX1255 TX stream).
+        if (m_pttKeyed)
             m_pttKeyed = false;
-            if (m_tx) {
-                m_tx->setPtt(false);
-            }
-        }
-        if (m_pttReserved) {
-            if (arb)
-                arb->releaseTx();
-            m_pttReserved = false;
-        }
         m_pttPending = false;
         return;
     }
@@ -359,8 +349,6 @@ void FmSvxlinkBridge::updatePtt()
         if (granted) {
             if (!sessionOwned && arb)
                 m_pttReserved = true;
-            if (m_tx)
-                m_tx->setPtt(true);
             m_pttKeyed = true;
             m_pttPending = false;
         } else {
@@ -375,8 +363,6 @@ void FmSvxlinkBridge::updatePtt()
         if (arb->acquireTx(Mode::FM)) {
             m_pttReserved = true;
         } else {
-            if (m_tx)
-                m_tx->setPtt(false);
             m_pttKeyed = false;
             m_pttPending = true;
         }
@@ -530,6 +516,7 @@ void FmSvxlinkBridge::txThread()
     int           audioPeak = 0;
     auto lastLog = std::chrono::steady_clock::now();
     auto pttLastRetry = std::chrono::steady_clock::now();
+    bool          prevKeyed = false;
 
     while (m_running.load()) {
         const auto now2 = std::chrono::steady_clock::now();
@@ -537,6 +524,26 @@ void FmSvxlinkBridge::txThread()
             now2 - pttLastRetry >= std::chrono::milliseconds(20)) {
             updatePtt();
             pttLastRetry = now2;
+        }
+
+        const bool keyed = m_pttKeyed.load();
+        if (keyed != prevKeyed) {
+            // The TX worker is the single owner of the SX1255 TX stream: PTT
+            // is switched only here, between writes, so no IQ is ever clocked
+            // into the I2S while the chip transitions RX<->TX.
+            if (m_tx)
+                m_tx->setPtt(keyed);
+            if (!keyed) {
+                // Release the arbiter only after the physical TX is off.
+                std::lock_guard<std::mutex> lock(m_pttMutex);
+                if (m_pttReserved) {
+                    if (ITxArbiter* arb = m_arbiter.load())
+                        arb->releaseTx();
+                    m_pttReserved = false;
+                }
+                m_pttPending = false;
+            }
+            prevKeyed = keyed;
         }
 
         const snd_pcm_sframes_t got = snd_pcm_readi(
@@ -594,7 +601,7 @@ void FmSvxlinkBridge::txThread()
                           (static_cast<double>(pcmSample) / 32768.0);
         }
 
-        if (m_pttKeyed.load()) {
+        if (keyed) {
             int upAcc = 0;
             for (snd_pcm_sframes_t i = 0; i < got; ++i) {
                 float x = static_cast<float>(pcm[static_cast<std::size_t>(i)]) / 32768.0F;

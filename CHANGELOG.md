@@ -2,6 +2,17 @@
 
 Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
+## [1.0.0-rc3] — 2026-10-14
+
+### Opraveno
+
+- FM/SVXLink TX: při přepínání RX↔TX už do I2S netečou žádná data. Při
+  klíčování se ALSA playback zavře a znovu otevře prázdný ještě před zapnutím
+  TX hodin, PLL se nechá zamknout a teprve pak se předplní; při odklíčení se
+  stream nejdřív zastaví a teprve pak se vypne TX. PTT přepíná jen TX vlákno
+  (mezi zápisy) a arbiter se uvolní až po fyzickém vypnutí TX, takže M17/D-Star
+  nemůžou klíčovat do streamu, který se právě bourá.
+
 ## [1.0.0-rc2] — 2026-10-13
 
 ### Opraveno
