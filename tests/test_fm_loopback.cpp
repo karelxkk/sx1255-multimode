@@ -52,6 +52,7 @@ int main()
         const IQBlock block{0, rxIq.data() + off,
                             std::min<std::size_t>(2048, rxIq.size() - off),
                             kSampleRate};
+        plugin->feedRx(block);
         if (plugin->detect(block).detected)
             detected = true;
     }

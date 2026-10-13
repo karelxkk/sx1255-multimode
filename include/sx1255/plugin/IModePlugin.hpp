@@ -70,6 +70,13 @@ public:
     // Arbitration priority.  Higher wins; the spec orders M17 > D-Star > FM.
     virtual int priority() const noexcept = 0;
 
+    // Lightweight, always-on RX hook, called for every block before the
+    // arbitration phase (detect/process).  Plugins that expose a receive path
+    // independent of session ownership (e.g. the FM/SVXLink audio bridge) use
+    // it to keep that path alive even while another entity holds the
+    // transmitter.  Default: no-op.
+    virtual void feedRx(const IQBlock&) {}
+
     // Inspect one IQ block and report whether a valid frame/sync/tone was
     // found.  Called concurrently for every plugin while no session is active.
     virtual Detection detect(const IQBlock& block) = 0;

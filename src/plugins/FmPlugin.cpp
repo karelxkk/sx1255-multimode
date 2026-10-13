@@ -72,16 +72,24 @@ public:
             m_bridge->setArbiter(arbiter);
     }
 
-    Detection detect(const IQBlock& block) override
+    // Always-on RX hook (called for every block, every state).  Keeps the
+    // RF -> SVXLink audio path and the SVXLink squelch alive without running
+    // the full detection fan-out on the dispatch thread.
+    void feedRx(const IQBlock& block) override
     {
-        // Keep the RF -> SVXLink audio path alive even while we are only
-        // monitoring (no FM session yet).  The dispatcher calls detect() both
-        // in the idle monitoring phase and during an arbiter-only TX state
-        // (ACTIVE_SVXLINK), so SVXLink always hears the receiver.
         if (m_useSvxlink && m_bridge)
             m_bridge->pushRxIq(block.samples, block.count);
 
-        const double presence = ingest(block, false);
+        m_lastPresence = ingest(block, false);
+        if (m_useSvxlink && !m_active)
+            driveSql(m_lastPresence >= 0.0 && m_lastPresence > kToneThreshold,
+                     std::chrono::steady_clock::now());
+    }
+
+    Detection detect(const IQBlock& block) override
+    {
+        (void)block;
+        const double presence = m_lastPresence;
         if (presence < 0.0) {
             m_confirm = 0;
             return {false, 0.0F};
@@ -91,12 +99,6 @@ public:
         const bool detected = m_confirm >= kConfirmBlocks;
         const float confidence = static_cast<float>(
             std::clamp(presence / (2.0 * kToneThreshold), 0.0, 1.0));
-
-        // Drive the SVXLink squelch from the local carrier even outside an FM
-        // session, so a local station can key up during SVXLink's hang tail
-        // (state ACTIVE_SVXLINK) without waiting for a new session.
-        if (m_useSvxlink)
-            driveSql(detected, std::chrono::steady_clock::now());
 
         if (detected && m_stats)
             m_stats->recordDetection(Mode::FM);
@@ -375,6 +377,7 @@ private:
     std::chrono::steady_clock::time_point m_carrierLostAt{};
     unsigned m_carrierLostBlocks = 0;
     float m_lastConfidence = 0.0F;
+    double m_lastPresence = -1.0;
     unsigned m_confirm = 0;
     std::chrono::steady_clock::time_point m_hangStart{};
 };

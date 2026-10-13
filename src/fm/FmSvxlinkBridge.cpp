@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <pthread.h>
+#include <sched.h>
 #include <thread>
 #include <vector>
 
@@ -28,6 +30,16 @@ constexpr int kRxIfDecim = 5;
 constexpr int kRxIfTaps = 61;
 constexpr int kAudioFirTaps = 81;
 constexpr float kRxIfFc = 7500.0F;
+
+// Run the audio worker threads at a real-time priority so the ALSA rings are
+// refilled before they can underrun.  Best effort: without CAP_SYS_NICE the
+// call fails and the threads keep their normal scheduling.
+void elevateThreadPriority()
+{
+    sched_param sp{};
+    sp.sched_priority = 20;
+    pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+}
 
 void designLowpass(float* taps, int ntaps, float fs, float fc)
 {
@@ -272,8 +284,8 @@ bool FmSvxlinkBridge::start(ITransmit* tx)
 
     m_running = true;
     m_ptt.start();
-    m_rxThread = std::thread([this] { rxThread(); });
-    m_txThread = std::thread([this] { txThread(); });
+    m_rxThread = std::thread([this] { elevateThreadPriority(); rxThread(); });
+    m_txThread = std::thread([this] { elevateThreadPriority(); txThread(); });
     std::fprintf(stderr, "SVXLink FM bridge started (rate=%d)\n", m_config.audioRate);
     return true;
 }

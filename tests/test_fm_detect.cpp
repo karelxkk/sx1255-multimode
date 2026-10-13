@@ -48,6 +48,7 @@ int main()
             const IQBlock block{0, iq.data() + off,
                                 std::min<std::size_t>(2048, iq.size() - off),
                                 kSampleRate};
+            fm->feedRx(block);
             if (fm->detect(block).detected)
                 detected = true;
         }
@@ -63,6 +64,7 @@ int main()
             const IQBlock block{0, iq.data() + off,
                                 std::min<std::size_t>(2048, iq.size() - off),
                                 kSampleRate};
+            fm->feedRx(block);
             if (fm->detect(block).detected)
                 return 2;
         }
@@ -82,6 +84,7 @@ int main()
             const IQBlock block{0, iq.data() + off,
                                 std::min<std::size_t>(2048, iq.size() - off),
                                 kSampleRate};
+            fm->feedRx(block);
             if (fm->detect(block).detected)
                 return 3;
         }

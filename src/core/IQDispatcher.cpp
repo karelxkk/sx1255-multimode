@@ -33,19 +33,22 @@ void IQDispatcher::dispatch(const IQBlock& block)
     if (m_iqSink)
         m_iqSink(block.samples, block.count);
 
+    // Always-on RX hook, independent of who owns the transmitter: keeps the
+    // FM/SVXLink receive path (and its squelch) alive in every state without
+    // running each plugin's full detect() on the dispatch thread.
+    for (const auto& plugin : m_registry.plugins())
+        if (plugin)
+            plugin->feedRx(block);
+
     m_sessions.timeoutCheck();
 
     // Exclusive phase: only the owning plugin sees the IQ stream.
     if (m_sessions.isActive()) {
         auto owner = m_sessions.owner();
         if (!owner) {
-            // ACTIVE_SVXLINK / ACTIVE_M17_NETWORK: the arbiter holds TX but no
-            // plugin owns a session.  The RX path must stay alive so the FM
-            // plugin can keep feeding the SVXLink bridge (RF -> SVXLink).  Run
-            // the monitoring fan-out, but do not grant a new session.
-            for (const auto& plugin : m_registry.plugins())
-                if (plugin)
-                    plugin->detect(block);
+            // ACTIVE_SVXLINK / ACTIVE_M17_NETWORK: arbiter-only TX state.  The
+            // RX path was already fed by feedRx() above; do not grant a new
+            // session and do not run the (expensive) full detection fan-out.
             return;
         }
         if (!owner->process(block))
