@@ -62,6 +62,18 @@ std::string SystemStatistics::currentMode() const
     return m_currentMode;
 }
 
+void SystemStatistics::setNetworkMode(std::string mode)
+{
+    std::lock_guard<std::mutex> lock(m_modeMutex);
+    m_networkMode = std::move(mode);
+}
+
+std::string SystemStatistics::networkMode() const
+{
+    std::lock_guard<std::mutex> lock(m_modeMutex);
+    return m_networkMode;
+}
+
 std::uint64_t SystemStatistics::uptimeSeconds() const
 {
     return static_cast<std::uint64_t>(
@@ -162,14 +174,15 @@ std::string SystemStatistics::statusJson() const
     else if (mode == "ACTIVE_M17") modeName = "M17";
     else modeName = "";  // idle/detecting
 
-    char buf[512];
+    char buf[640];
     std::snprintf(buf, sizeof(buf),
-        "{\"state\":\"%s\",\"mode\":\"%s\",\"rssi\":%.0f,\"uptime\":%llu,"
+        "{\"state\":\"%s\",\"mode\":\"%s\",\"network_mode\":\"%s\","
+        "\"rssi\":%.0f,\"uptime\":%llu,"
         "\"stats\":{"
         "\"fm_detected\":%llu,\"dstar_detected\":%llu,\"m17_detected\":%llu,"
         "\"fm_sessions\":%llu,\"dstar_sessions\":%llu,\"m17_sessions\":%llu,"
         "\"false_positives\":%llu}}",
-        mode.c_str(), modeName.c_str(), rssiDbm(),
+        mode.c_str(), modeName.c_str(), networkMode().c_str(), rssiDbm(),
         static_cast<unsigned long long>(uptimeSeconds()),
         static_cast<unsigned long long>(fmDetected()),
         static_cast<unsigned long long>(dstarDetected()),

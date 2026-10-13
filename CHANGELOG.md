@@ -39,7 +39,8 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
   módu: default je FM/SVXLink (M17 a D-Star ze sítě blokované); po lokálním
   klíčování se zdroj přepne na odpovídající mód (M17 -> M17, FM -> SVXLink,
   D-Star -> D-Star).  Arbiter povolí TX ze sítě jen tomu zdroji, který odpovídá
-  naposledy použitému lokálnímu módu.
+  naposledy použitému lokálnímu módu.  Preferovaný síťový mód je vidět v
+  `/api/status` (`network_mode`) a na webovém dashboardu.
 - FM zvukové tvarování je nově konfigurovatelné v YAML
   (`rx_deemph_us`, `tx_preemph_us`, `rx_audio_lpf_hz`, `tx_audio_lpf_hz`).
   Defaulty jsou laděné pro NFM 12,5 kHz: 75 µs pre/de-emfáze a 3 kHz audio

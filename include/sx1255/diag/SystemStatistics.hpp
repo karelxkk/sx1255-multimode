@@ -20,6 +20,7 @@ public:
     void recordSession(Mode mode);
     void recordFalsePositive();
     void setCurrentMode(std::string mode);
+    void setNetworkMode(std::string mode);
     void setRssi(double rssiDbm);
 
     std::uint64_t fmDetected() const;
@@ -30,6 +31,7 @@ public:
     std::uint64_t m17Sessions() const;
     std::uint64_t falsePositives() const;
     std::string currentMode() const;
+    std::string networkMode() const;
     double rssiDbm() const;
     std::uint64_t uptimeSeconds() const;
     std::uint64_t totalUptimeSeconds() const;
@@ -55,6 +57,7 @@ private:
 
     mutable std::mutex m_modeMutex;
     std::string m_currentMode = "IDLE";
+    std::string m_networkMode = "FM";
     std::chrono::steady_clock::time_point m_start;
 };
 

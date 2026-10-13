@@ -33,6 +33,7 @@ const std::string& dashboardHtml()
 <header>
   <div>stav <span class="stat" id="state">-</span></div>
   <div>mód <span class="stat" id="mode">-</span></div>
+  <div>síť <span class="stat" id="netmode">-</span></div>
   <div>RSSI <span class="stat" id="rssi">-</span> dBm</div>
   <div>uptime <span class="stat" id="uptime">-</span> s</div>
   <div id="iq"></div>
@@ -154,6 +155,7 @@ async function refreshStatus(){
   if (!s) return;
   $('state').textContent = s.state || '-';
   $('mode').textContent = s.mode || '-';
+  $('netmode').textContent = s.network_mode || '-';
   $('rssi').textContent = s.rssi;
   $('uptime').textContent = s.uptime;
   $('fm').textContent = s.stats ? s.stats.fm_detected : '-';
