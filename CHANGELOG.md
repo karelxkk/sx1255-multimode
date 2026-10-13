@@ -6,6 +6,10 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Opraveno
 
+- RX cesta (RF -> SVXLink) byla mrtvá, kdykoli arbiter držel TX bez plugin
+  session (`ACTIVE_SVXLINK` / `ACTIVE_M17_NETWORK`): dispatcher zahodil celý IQ
+  blok a `owner` byl prázdný. FM plugin teď krmí RX do SVXLink bridge průběžně
+  i v těchto stavech, takže místní RF signál jde do SVXLinku vždy.
 - FM/SVXLink převaděč: ALSA playback na SX1255 podtékal (XRUN) na startu relace
   i během dojezdu. DAC pak opakoval stará data, což na vzduchu znělo jako
   pravidelný digitální šum. Bridge nyní drží TX stream živý tichou nosnou, když

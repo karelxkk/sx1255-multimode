@@ -38,7 +38,17 @@ void IQDispatcher::dispatch(const IQBlock& block)
     // Exclusive phase: only the owning plugin sees the IQ stream.
     if (m_sessions.isActive()) {
         auto owner = m_sessions.owner();
-        if (owner && !owner->process(block))
+        if (!owner) {
+            // ACTIVE_SVXLINK / ACTIVE_M17_NETWORK: the arbiter holds TX but no
+            // plugin owns a session.  The RX path must stay alive so the FM
+            // plugin can keep feeding the SVXLink bridge (RF -> SVXLink).  Run
+            // the monitoring fan-out, but do not grant a new session.
+            for (const auto& plugin : m_registry.plugins())
+                if (plugin)
+                    plugin->detect(block);
+            return;
+        }
+        if (!owner->process(block))
             m_sessions.finishSession();
         return;
     }
