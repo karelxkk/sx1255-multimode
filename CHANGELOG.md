@@ -2,7 +2,7 @@
 
 Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
-## [Unreleased]
+## [1.0.0-rc2] — 2026-10-13
 
 ### Opraveno
 
