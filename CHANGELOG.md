@@ -6,6 +6,10 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Opraveno
 
+- Digitální šum na začátku vysílání/dojezdu: playback ring byl při klíčování
+  prázdný a než přišel první IQ blok, I2S ho vyprázdnil (XRUN), což se na
+  vzduchu projevilo jako pravidelný digitální šum. `setPtt(true)` teď před
+  zapnutím TX předplní ring ~65 ms tiché nosné.
 - Klíčování během dojezdu: když SVXLink drží TX (`ACTIVE_SVXLINK`, přehrává
   dojezd), místní stanice teď může klíčovat. SQL se nově řídí místní nosnou i
   mimo aktivní FM session (v `detect()`), takže se otevře okamžitě, jakmile

@@ -44,6 +44,8 @@ constexpr std::uint8_t kModeMask         = 0x0F;
 
 constexpr std::uint8_t kExpectedVersion = 0x11;
 constexpr int kSampleRate = 125000;
+// ~65 ms of silent carrier written at PTT-on to prime the TX playback ring.
+constexpr snd_pcm_uframes_t kTxPrefillFrames = 8192;
 
 std::uint8_t lnaCode(int db)
 {
@@ -246,6 +248,12 @@ bool SX1255Hardware::setPtt(bool on)
         if (m_playback) {
             snd_pcm_drop(m_playback);
             snd_pcm_prepare(m_playback);
+            // Pre-fill the playback ring with a short silent carrier so the
+            // stream cannot underrun (XRUN) in the window between enabling the
+            // TX clock and the plugin's first IQ block.  A start-of-over
+            // underrun is audible as a periodic digital-noise burst.
+            std::vector<std::int32_t> prefill(kTxPrefillFrames * 2, 0);
+            snd_pcm_writei(m_playback, prefill.data(), kTxPrefillFrames);
         }
         if (!enableTx(true))
             return false;
