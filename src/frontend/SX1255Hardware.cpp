@@ -327,6 +327,23 @@ bool SX1255Hardware::openAlsa()
                      gotRate, gotChannels,
                      static_cast<unsigned long>(gotPeriod),
                      static_cast<unsigned long>(gotBuffer));
+
+        // Software params, matching the original sx1255-fm-repeater: do not let
+        // the playback start until a couple of periods are buffered and wake
+        // the writer one period ahead.  Without a start threshold ALSA can
+        // start (and re-run) the stream on a nearly empty ring; the SX1255 I2S
+        // then keeps cycling the buffer, which is audible as a short random
+        // audio snippet repeating.
+        {
+            snd_pcm_sw_params_t* sw = nullptr;
+            snd_pcm_sw_params_alloca(&sw);
+            if (snd_pcm_sw_params_current(pcm, sw) >= 0) {
+                if (stream == SND_PCM_STREAM_PLAYBACK)
+                    snd_pcm_sw_params_set_start_threshold(pcm, sw, gotPeriod * 2);
+                snd_pcm_sw_params_set_avail_min(pcm, sw, gotPeriod);
+                snd_pcm_sw_params(pcm, sw);
+            }
+        }
         (void)stream;
         return snd_pcm_prepare(pcm) >= 0;
     };
