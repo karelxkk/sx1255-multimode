@@ -79,7 +79,7 @@ sx1255-bench       výkonnostní profil (FFT, waterfall, RX chain)
 Deb balíček pro nasazení:
 
 ```text
-scripts/build_deb.sh        # -> sx1255-multimode_1.0.0-rc1_arm64.deb
+scripts/build_deb.sh        # -> sx1255-multimode_1.0.0-rc3_arm64.deb
 ```
 
 CLI démona:
