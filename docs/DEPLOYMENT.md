@@ -16,7 +16,7 @@ samostatné I2S/SPI rozhraní. Stockový Raspberry Pi kernel 125 kHz neumí
    (kořen repozitáře). Připravený balíček pro Pi Zero 2 W:
 
    ```text
-   sudo apt install ./rpi-zero2-kernel-6.18.36-myzero2+.deb
+   sudo apt install ./rpi-zero2-kernel-6.18.54-myzero2+.deb
    sudo reboot
    ```
 

@@ -42,7 +42,7 @@ Plánované: DMR, C4FM, POCSAG, APRS, AX.25, FreeDV, Codec2 experimenty.
 - Raspberry Pi Zero 2 W + SX1255 HAT (arm64),
 - kernel s podporou I2S vzorkování **125 000 Hz** (patch
   `0001-ASoC-allow-125000-Hz-CONTINUOUS-for-sx1255_sound.patch`, balíček
-  `rpi-zero2-kernel-6.18.36-myzero2+.deb`),
+  `rpi-zero2-kernel-6.18.54-myzero2+.deb`),
 - device-tree overlay `genericstereoaudiocodec` a v `config.txt`:
 
   ```ini
