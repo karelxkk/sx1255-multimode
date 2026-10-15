@@ -416,7 +416,7 @@ private:
     std::chrono::steady_clock::time_point m_syncBurstStart{};
 
     static constexpr long kIdleTimeoutMs = 1500;
-    static constexpr int  kMinSyncBurst = 4;
+    static constexpr int  kMinSyncBurst = 5;
     static constexpr long kNetTxTimeoutMs = 1000;
 };
 
