@@ -37,6 +37,24 @@ Plánované: DMR, C4FM, POCSAG, APRS, AX.25, FreeDV, Codec2 experimenty.
 Žádné externí knihovny. YAML je parsován vestavěným minimalistickým parserem
 (podmnožina YAML), ALSA/SPI vrstva přijde později přes `ISX1255` rozhraní.
 
+## Požadavky na hardware
+
+- Raspberry Pi Zero 2 W + SX1255 HAT (arm64),
+- kernel s podporou I2S vzorkování **125 000 Hz** (patch
+  `0001-ASoC-allow-125000-Hz-CONTINUOUS-for-sx1255_sound.patch`, balíček
+  `rpi-zero2-kernel-6.18.36-myzero2+.deb`),
+- device-tree overlay `genericstereoaudiocodec` a v `config.txt`:
+
+  ```ini
+  dtparam=spi=on
+  dtparam=i2s=on
+  dtoverlay=genericstereoaudiocodec
+  ```
+
+- pro `fm.backend: svxlink` navíc modul `snd-aloop`.
+
+Postup instalace kernelu a overlaye viz [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 ## Build a testy
 
 ```
