@@ -3,6 +3,9 @@
 Dokumentace reálného frontendu `SX1255Hardware`, který nahrazuje `NullSX1255`
 a implementuje rozhraní `ISX1255` (SPI + libgpiod + ALSA).
 
+> **Kernel a overlay:** instalace kernelu s podporou 125 kHz a overlaye
+> `genericstereoaudiocodec` je popsána v [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Architektura
 
 ```text

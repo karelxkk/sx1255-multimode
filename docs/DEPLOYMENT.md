@@ -6,6 +6,61 @@ Cílový systém: Raspberry Pi OS (64-bit, arm64), SX1255 HAT, sound karta pro
 > **Doporučený postup:** použij připravený deb balíček — viz
 > [DEB_PACKAGE.md](DEB_PACKAGE.md). Níže je ruční postup pro vývojáře.
 
+## 0. Kernel a device-tree overlay
+
+SX1255 potřebuje I2S zvukovku s nestandardním vzorkováním **125 000 Hz** a
+samostatné I2S/SPI rozhraní. Stockový Raspberry Pi kernel 125 kHz neumí
+(stub kodeky `spdif-dir`/`spdif-dit` mají pevné sazby), takže je potřeba:
+
+1. **Kernel s patchem** `0001-ASoC-allow-125000-Hz-CONTINUOUS-for-sx1255_sound.patch`
+   (kořen repozitáře). Připravený balíček pro Pi Zero 2 W:
+
+   ```text
+   sudo apt install ./rpi-zero2-kernel-6.18.36-myzero2+.deb
+   sudo reboot
+   ```
+
+   Při vlastním sestavení kernelu aplikuj patch na
+   `sound/soc/codecs/spdif_receiver.c` a `spdif_transmitter.c`
+   (`SNDRV_PCM_RATE_CONTINUOUS` + `rate_min`/`rate_max`).
+
+2. **Overlay `genericstereoaudiocodec`** (zdroj `genericstereoaudiocodec.dts`
+   v kořeni repozitáře; Pi je I2S slave, kodek je bit/frame master):
+
+   ```text
+   dtc -@ -H epapr -O dtb -o genericstereoaudiocodec.dtbo \
+     -Wno-unit_address_vs_reg genericstereoaudiocodec.dts
+   sudo install -m 0644 genericstereoaudiocodec.dtbo \
+     /boot/firmware/overlays/genericstereoaudiocodec.dtbo
+   ```
+
+3. **Povol rozhraní v `/boot/firmware/config.txt`** (starší obrazy používají
+   `/boot/config.txt`):
+
+   ```ini
+   dtparam=spi=on
+   dtparam=i2s=on
+   dtoverlay=genericstereoaudiocodec
+   ```
+
+4. Reboot a ověření:
+
+   ```text
+   sudo reboot
+   aplay -l          # karta "GenericStereoAudioCodec" / GenericStereoAu
+   arecord -l
+   ```
+
+   Očekávané ALSA zařízení (viz `SX1255_HARDWARE.md`):
+
+   ```text
+   playback: hw:GenericStereoAu,0,0
+   capture:  hw:GenericStereoAu,1,0
+   ```
+
+Pro backend `fm.backend: svxlink` je navíc potřeba virtuální zvukovka
+`snd-aloop` — viz [deploy/svxlink/README.md](../deploy/svxlink/README.md).
+
 ## 1. Build
 
 ```text
