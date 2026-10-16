@@ -214,6 +214,7 @@ public:
         t.mode = Mode::FM;
         t.metrics["ctcss_rx_hz"] = m_config.ctcssRx;
         t.metrics["ctcss_tx_hz"] = m_config.ctcssTx;
+        t.metrics["ctcss_dev_hz"] = m_lastCtcssDev;
         t.metrics["confidence"] = m_lastConfidence;
         return t;
     }
@@ -327,6 +328,20 @@ private:
         const double tonePower = goertzelPower(centered.data(), kWindow,
                                                m_config.ctcssRx, block.sampleRateHz);
 
+        // CTCSS level as deviation: the Goertzel magnitude of a sine of
+        // amplitude A over N samples is A*N/2, so A = 2*sqrt(power)/N; the
+        // discriminator output is radians per sample, hence the conversion.
+        // Spec for a 12.5 kHz NFM system: 175-375 Hz (-23 to -16.5 dB).
+        m_lastCtcssDev = 2.0 * std::sqrt(tonePower) / static_cast<double>(kWindow) *
+                         (kSampleRate / (2.0 * 3.14159265358979323846));
+        const auto nowTone = std::chrono::steady_clock::now();
+        if (m_lastCtcssDev > 50.0 &&
+            nowTone - m_lastToneLog > std::chrono::seconds(1)) {
+            m_lastToneLog = nowTone;
+            std::fprintf(stderr, "FM CTCSS: %.0f Hz deviation (%.1f dB rel. 2.5 kHz)\n",
+                         m_lastCtcssDev, 20.0 * std::log10(m_lastCtcssDev / 2500.0));
+        }
+
         if (tx && m_tx && !txIq.empty())
             m_tx->writeIQ(txIq.data(), txIq.size());
 
@@ -373,6 +388,8 @@ private:
     std::chrono::steady_clock::time_point m_carrierLostAt{};
     unsigned m_carrierLostBlocks = 0;
     float m_lastConfidence = 0.0F;
+    double m_lastCtcssDev = 0.0;
+    std::chrono::steady_clock::time_point m_lastToneLog{};
     unsigned m_confirm = 0;
     std::chrono::steady_clock::time_point m_hangStart{};
 };
