@@ -25,6 +25,19 @@ namespace sx1255 {
 
 namespace {
 
+// syncThresholds turns the M17 configuration into synchronizer thresholds;
+// the defaults are m17-gateway's values.
+m17::SyncThresholds syncThresholds(const M17Config& config)
+{
+    m17::SyncThresholds t;
+    t.lsf    = static_cast<float>(config.syncLsfThreshold);
+    t.packet = static_cast<float>(config.syncPacketThreshold);
+    t.stream = static_cast<float>(config.syncStreamThreshold);
+    t.eot    = static_cast<float>(config.syncEotThreshold);
+    t.follow = static_cast<float>(config.syncFollowThreshold);
+    return t;
+}
+
 // ---------------------------------------------------------------------------
 // M17Plugin
 //
@@ -48,24 +61,34 @@ public:
               m_lastActivity = now;
               // Noise produces the occasional stray correlation.  Require a
               // burst of several syncs inside a short window before declaring
-              // M17; a real stream emits them every frame (~25/s).
+              // M17; a real stream emits them every frame (~25/s).  This only
+              // decides who owns the channel: decoding below runs regardless,
+              // so a short packet is never lost because it did not raise the
+              // burst count.
               if (m_syncBurst == 0 || now - m_syncBurstStart > std::chrono::milliseconds(500)) {
                   m_syncBurst = 1;
                   m_syncBurstStart = now;
               } else {
                   ++m_syncBurst;
               }
-              if (m_syncBurst >= kMinSyncBurst) {
+              if (m_syncBurst >= m_m17Config.minSyncBurst) {
                   m_detected = true;
                   m_syncConfidence = 1.0;
               }
               m_frameCount++;
+              m_syncCount++;
               if (typ == m17::LSFSync)
                   m_lsfCount++;
-              if (typ == m17::EOTMarker)
-                  m_eotSeen = true;
               m_decoder.decodeFrame(typ, softBits);
-          })
+              // Follow the decoder: while a packet transmission is running, a
+              // single packet sync word identifies its frames, so the last
+              // frame is not lost when the sync word that would follow it is
+              // missing or truncated.
+              m_synchronizer.setExpectedType(m_decoder.syncedType() == m17::PacketSync
+                                                 ? m17::PacketSync
+                                                 : 0);
+          },
+          syncThresholds(config))
         , m_decoder(m17::Decoder::Callbacks{
               [this](const m17::LSF&, double) {       // onLSF
                   m_lsfDecoded = true;
@@ -84,14 +107,50 @@ public:
                   m_lastActivity = std::chrono::steady_clock::now();
                   forwardStream(lsf, sid, fn, {}, true);
               },
-              [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload, double) {  // onPacket
+              [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload, double ber) {  // onPacket
                   m_lastActivity = std::chrono::steady_clock::now();
+                  m_rfPackets++;
                   std::vector<std::uint8_t> packetBytes = lsf.toBytes();
                   packetBytes.insert(packetBytes.end(), payload.begin(), payload.end());
-                  if (m_reflector)
-                      m_reflector->sendPacket(packetBytes);
-                  if (m_bridge)
-                      m_bridge->sendPacket(packetBytes);
+                  bool forwarded = false;
+                  if (m_reflector && m_reflector->sendPacket(packetBytes))
+                      forwarded = true;
+                  if (m_bridge && m_bridge->sendPacket(packetBytes))
+                      forwarded = true;
+                  if (forwarded)
+                      ++m_rfPacketsForwarded;
+                  else
+                      ++m_rfPacketsNotForwarded;
+                  std::fprintf(stderr,
+                               "M17 RF->NET packet: dst=%s src=%s payload=%zu bytes ber=%.1f%% %s\n",
+                               lsf.dstCallsign().c_str(), lsf.srcCallsign().c_str(),
+                               payload.size(), ber, forwarded ? "forwarded" : "NOT forwarded");
+              },
+              [this](const m17::LSF& lsf, double ber) {   // onLSFBadCRC
+                  ++m_lsfBadCrc;
+                  logDiag(m_diagLsf, "LSF CRC fail",
+                          lsf.dstCallsign() + ">" + lsf.srcCallsign() +
+                              " ber=" + std::to_string(ber));
+              },
+              [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload, double ber) {  // onPacketBadCRC
+                  ++m_rfPacketsBadCrc;
+                  std::fprintf(stderr,
+                               "M17 RF->NET packet CRC fail: dst=%s src=%s len=%zu ber=%.1f%% data=",
+                               lsf.dstCallsign().c_str(), lsf.srcCallsign().c_str(),
+                               payload.size(), ber);
+                  for (const std::uint8_t b : payload)
+                      std::fprintf(stderr, "%02x", b);
+                  std::fprintf(stderr, "\n");
+              },
+              [this](std::uint16_t typ, const char* reason) {   // onFrameDropped
+                  ++m_framesDropped;
+                  logDiag(m_diagFrame, "frame not usable", std::string(reason) +
+                                                            " (sync=0x" +
+                                                            hexSync(typ) + ")");
+              },
+              [this]() {   // onEOT: the decoder saw the end of a transmission
+                  m_eotSeen = true;
+                  m_lastActivity = std::chrono::steady_clock::now();
               }})
         , m_m17Config(std::move(config))
         , m_stats(stats)
@@ -159,19 +218,43 @@ public:
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                     ITransmit* tx = m_tx.load();
                     ITxArbiter* arbiter = m_arbiter.load();
-                    std::lock_guard<std::mutex> lock(m_txMutex);
-                    if (m_txActive &&
-                        std::chrono::steady_clock::now() - m_txLastFrameTime >
-                            std::chrono::milliseconds(kNetTxTimeoutMs)) {
-                        if (tx)
-                            tx->setPtt(false);
-                        m_txActive = false;
-                        m_txStreamId = 0xFFFF;
-                        if (m_netTxGranted && arbiter)
-                            arbiter->releaseTx();
-                        m_netTxGranted = false;
-                        std::fprintf(stderr, "M17 NET TX: timeout, released\n");
+                    {
+                        std::lock_guard<std::mutex> lock(m_txMutex);
+                        if (m_txActive &&
+                            std::chrono::steady_clock::now() - m_txLastFrameTime >
+                                std::chrono::milliseconds(kNetTxTimeoutMs)) {
+                            if (tx)
+                                tx->setPtt(false);
+                            m_txActive = false;
+                            m_txStreamId = 0xFFFF;
+                            if (m_netTxGranted && arbiter)
+                                arbiter->releaseTx();
+                            m_netTxGranted = false;
+                            std::fprintf(stderr, "M17 NET TX: timeout, released\n");
+                        }
                     }
+
+                    // Packets that waited for a free channel: forget the ones
+                    // that waited too long, retry the rest.
+                    const auto now = std::chrono::steady_clock::now();
+                    const auto ttl = std::chrono::milliseconds(
+                        m_m17Config.networkPacketTtlMs > 0 ? m_m17Config.networkPacketTtlMs : 1);
+                    std::size_t expired = 0;
+                    {
+                        std::lock_guard<std::mutex> lock(m_pendingMutex);
+                        while (!m_pendingPackets.empty() &&
+                               now - m_pendingPackets.front().received > ttl) {
+                            m_pendingPackets.pop_front();
+                            ++expired;
+                        }
+                    }
+                    if (expired > 0) {
+                        m_netPacketsDropped += expired;
+                        std::fprintf(stderr,
+                                     "M17 NET RX: %zu packet(s) expired after %d ms without a free channel\n",
+                                     expired, m_m17Config.networkPacketTtlMs);
+                    }
+                    transmitPendingPacket();
                 }
             });
         }
@@ -224,7 +307,19 @@ public:
         m_lastActivity = std::chrono::steady_clock::now();
         if (m_stats)
             m_stats->recordSession(Mode::M17);
-        m_synchronizer.reset();
+        // The synchronizer buffer is deliberately not cleared: it already
+        // holds samples of the transmission being received, and discarding
+        // them used to lose the packet frame that follows the LSF.
+    }
+
+    // monitor keeps the M17 receive path alive while another plugin owns the
+    // session (FM, D-Star or their hang time).  Packet mode carries data that
+    // has nothing to do with the other session, so it must not be ignored.
+    void monitor(const IQBlock& block) override
+    {
+        if (!m_m17Config.decodeDuringOtherSessions)
+            return;
+        feed(block);
     }
 
     bool process(const IQBlock& block) override
@@ -236,7 +331,7 @@ public:
         // A false sync in noise must not hold the channel forever: if no valid
         // M17 frame is decoded for this long, drop the session.
         const auto now = std::chrono::steady_clock::now();
-        if (now - m_lastActivity > std::chrono::milliseconds(kIdleTimeoutMs))
+        if (now - m_lastActivity > std::chrono::milliseconds(m_m17Config.idleTimeoutMs))
             return false;
         return true;
     }
@@ -246,8 +341,11 @@ public:
         m_active = false;
         m_eotSeen = false;
         m_syncBurst = 0;
-        m_synchronizer.reset();
-        m_decoder.reset();
+        // A packet that is still being reassembled must survive the session
+        // end; only an open stream has to go, because its LSF is stale once
+        // the session is over.
+        if (m_decoder.syncedType() == m17::StreamSync)
+            m_decoder.reset();
     }
 
     PluginTelemetry telemetry() const override
@@ -257,6 +355,26 @@ public:
         t.metrics["sync_confidence"] = m_syncConfidence;
         t.metrics["lsf_count"] = static_cast<double>(m_lsfCount);
         t.metrics["frame_count"] = static_cast<double>(m_frameCount);
+        t.metrics["sync_count"] = static_cast<double>(m_syncCount);
+        // Packet statistics: an operator can see that nothing was lost and,
+        // when something was, why.
+        const m17::Decoder::Counters counters = m_decoder.counters();
+        t.metrics["lsf_bad_crc"] = static_cast<double>(m_lsfBadCrc);
+        t.metrics["resync_count"] = static_cast<double>(counters.resync);
+        t.metrics["packet_frames"] = static_cast<double>(counters.packetFrames);
+        t.metrics["packets_rx"] = static_cast<double>(counters.packets);
+        t.metrics["packets_bad_crc"] = static_cast<double>(counters.packetsBadCRC);
+        t.metrics["frames_dropped"] = static_cast<double>(m_framesDropped);
+        t.metrics["rf_packets"] = static_cast<double>(m_rfPackets);
+        t.metrics["rf_packets_forwarded"] = static_cast<double>(m_rfPacketsForwarded);
+        t.metrics["rf_packets_not_forwarded"] = static_cast<double>(m_rfPacketsNotForwarded);
+        t.metrics["net_packets_queued"] = static_cast<double>(m_netPacketsQueued);
+        t.metrics["net_packets_sent"] = static_cast<double>(m_netPacketsSent);
+        t.metrics["net_packets_dropped"] = static_cast<double>(m_netPacketsDropped);
+        {
+            std::lock_guard<std::mutex> lock(m_pendingMutex);
+            t.metrics["net_packets_pending"] = static_cast<double>(m_pendingPackets.size());
+        }
         if (m_reflector) {
             const auto net = m_reflector->telemetry();
             t.strings["reflector_host"] = net.host;
@@ -381,13 +499,49 @@ private:
         }
     }
 
+    // processNetworkPacket queues a packet coming from the network and hands it
+    // to the transmitter as soon as the channel is free.  A packet is never
+    // thrown away just because the channel happened to be busy: it waits (up to
+    // networkPacketTtlMs) and the watchdog retries it.
     void processNetworkPacket(const std::vector<std::uint8_t>& packetBytes)
     {
-        if (packetBytes.size() < m17::LSFLen + 3)
+        if (packetBytes.size() < m17::LSFLen + 3) {
+            ++m_netPacketsDropped;
+            std::fprintf(stderr, "M17 NET RX packet too short (%zu bytes), discarded\n",
+                         packetBytes.size());
             return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_pendingMutex);
+            const std::size_t limit = m_m17Config.networkPacketQueue > 0
+                ? static_cast<std::size_t>(m_m17Config.networkPacketQueue)
+                : 1;
+            while (m_pendingPackets.size() >= limit) {
+                m_pendingPackets.pop_front();
+                ++m_netPacketsDropped;
+                std::fprintf(stderr, "M17 NET RX queue is full, dropping the oldest packet\n");
+            }
+            m_pendingPackets.push_back(PendingPacket{packetBytes, std::chrono::steady_clock::now()});
+            ++m_netPacketsQueued;
+        }
+        transmitPendingPacket();
+    }
+
+    // transmitPendingPacket sends the oldest queued packet if the channel is
+    // free; otherwise it leaves it in the queue for a later attempt.
+    void transmitPendingPacket()
+    {
+        std::vector<std::uint8_t> packetBytes;
+        {
+            std::lock_guard<std::mutex> lock(m_pendingMutex);
+            if (m_pendingPackets.empty())
+                return;
+            packetBytes = m_pendingPackets.front().bytes;
+        }
+
+        // Half duplex: hold the packet while a local RF session is running.
         if (m_active.load())
             return;
-
         ITransmit* tx = m_tx.load();
         ITxArbiter* arbiter = m_arbiter.load();
         if (!tx || !arbiter)
@@ -398,7 +552,9 @@ private:
         // packet into the middle of it.
         if (m_txActive || m_netTxGranted)
             return;
-        if (!arbiter->acquireTx(Mode::M17))
+        // A packet is data for M17 and must reach the radio even when the
+        // network audio source is currently another mode.
+        if (!arbiter->acquireTxPacket(Mode::M17))
             return;
 
         const m17::LSF lsf = m17::LSF::newFromBytes(packetBytes.data());
@@ -428,6 +584,12 @@ private:
         tx->setPtt(false);
         arbiter->releaseTx();
 
+        {
+            std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
+            if (!m_pendingPackets.empty())
+                m_pendingPackets.pop_front();
+        }
+        ++m_netPacketsSent;
         std::fprintf(stderr,
                      "M17 NET TX packet: dst=%s src=%s payload=%zu bytes\n",
                      lsf.dstCallsign().c_str(), lsf.srcCallsign().c_str(),
@@ -454,6 +616,40 @@ private:
             m_reflector->sendStream(dg);
         if (m_bridge)
             m_bridge->sendStream(dg);
+    }
+
+    // Diagnostics are rate limited: every event is counted (telemetry), but a
+    // marginal signal must not flood the journal - a stream whose LSF was
+    // missed rejects frames 25 times per second.
+    struct DiagState {
+        std::chrono::steady_clock::time_point last{};
+        std::uint64_t suppressed = 0;
+    };
+
+    static std::string hexSync(std::uint16_t typ)
+    {
+        char buf[8];
+        std::snprintf(buf, sizeof(buf), "%04x", typ);
+        return buf;
+    }
+
+    // Called from the receive thread only.
+    void logDiag(DiagState& state, const char* kind, const std::string& message)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (state.last != std::chrono::steady_clock::time_point{} &&
+            now - state.last < std::chrono::seconds(1)) {
+            ++state.suppressed;
+            return;
+        }
+        const std::uint64_t suppressed = state.suppressed;
+        state.suppressed = 0;
+        state.last = now;
+        if (suppressed != 0)
+            std::fprintf(stderr, "M17 %s: %s (+%llu suppressed)\n", kind, message.c_str(),
+                         static_cast<unsigned long long>(suppressed));
+        else
+            std::fprintf(stderr, "M17 %s: %s\n", kind, message.c_str());
     }
 
     void feed(const IQBlock& block)
@@ -492,6 +688,15 @@ private:
     std::mutex               m_queueMutex;
     std::condition_variable  m_txCv;
     std::deque<m17::StreamDatagram> m_txQueue;
+
+    // Network packets waiting for a free transmit slot.
+    struct PendingPacket {
+        std::vector<std::uint8_t> bytes;
+        std::chrono::steady_clock::time_point received;
+    };
+    mutable std::mutex m_pendingMutex;
+    std::deque<PendingPacket> m_pendingPackets;
+
     std::uint16_t            m_txStreamId = 0xFFFF;
     bool                     m_txActive = false;
     bool                     m_netTxGranted = false;
@@ -507,12 +712,22 @@ private:
     std::chrono::steady_clock::time_point m_lastActivity{};
     std::uint64_t m_lsfCount = 0;
     std::uint64_t m_frameCount = 0;
+    std::uint64_t m_syncCount = 0;
+    std::uint64_t m_lsfBadCrc = 0;
+    std::uint64_t m_framesDropped = 0;
+    std::uint64_t m_rfPackets = 0;
+    std::uint64_t m_rfPacketsForwarded = 0;
+    std::uint64_t m_rfPacketsNotForwarded = 0;
+    std::uint64_t m_rfPacketsBadCrc = 0;
+    std::uint64_t m_netPacketsQueued = 0;
+    std::uint64_t m_netPacketsSent = 0;
+    std::uint64_t m_netPacketsDropped = 0;
+    DiagState m_diagLsf;
+    DiagState m_diagFrame;
     double m_syncConfidence = 0.0;
     int m_syncBurst = 0;
     std::chrono::steady_clock::time_point m_syncBurstStart{};
 
-    static constexpr long kIdleTimeoutMs = 1500;
-    static constexpr int  kMinSyncBurst = 5;
     static constexpr long kNetTxTimeoutMs = 1000;
 };
 

@@ -1,3 +1,18 @@
+sx1255-multimode (1.0.0~rc5-1) unstable; urgency=medium
+
+  * M17 packet reception no longer loses packets: the decoder re-synchronizes
+    on every valid LSF, multi-frame packets are reassembled by frame number,
+    the synchronizer buffer survives session start/stop, the end marker only
+    ends a synchronized transmission and the last frame of a packet is found
+    without the following sync word.
+  * M17 keeps decoding while another mode owns the session (FM/D-Star hang
+    time), and network packets wait in a queue instead of being dropped.
+  * Transmit arbitration separates data from audio: a packet is no longer
+    refused because the network audio source is another mode.
+  * Packet statistics and message logging in the log and the dashboard.
+
+ -- Karel Kadlec (OK1LBC) <xkk@post.cz>  Fri, 16 Oct 2026 22:00:00 +0000
+
 sx1255-multimode (1.0.0~rc4-1) unstable; urgency=medium
 
   * D-Star local repeater, DSRP gateway and DCS/XLX hotspot support.

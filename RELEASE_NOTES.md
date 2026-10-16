@@ -1,4 +1,26 @@
-# Release Notes — sx1255-multimode v1.0.0-rc4
+# Release Notes — sx1255-multimode
+
+## v1.0.0-rc5 — M17 packet RX bez ztrát
+
+Příjem M17 packetů (SMS, poloha) je přepracovaný tak, aby žádný packet nezmizel:
+
+- dekodér se vždy znovu synchronizuje na platný LSF (i po přenosu, který
+  neskončil koncovou značkou),
+- více-rámcové zprávy se skládají podle čísla rámce (dřív fungovaly jen
+  jedno-rámcové SMS do ~22 znaků),
+- synchronizátor už nemaže buffer při startu/konci relace, takže se neztratí
+  rámec následující hned po LSF,
+- uvnitř packet přenosu stačí na rozpoznání rámce jediný sync word,
+- M17 se dekóduje i během relace jiného módu (FM/D-Star a jejich hang time),
+- packety ze sítě čekají na volný kanál ve frontě místo zahození,
+- arbitráž vysílače rozlišuje data a audio: packet se nezablokuje jen proto, že
+  je „síťový mód“ (network.mode auto) zrovna FM nebo D-Star,
+- každý packet, chybné CRC i nepoužitelný rámec je v logu a v telemetrii
+  (`packets_rx`, `packets_bad_crc`, `frames_dropped`, `net_packets_*`).
+
+Detaily a ladění prahů: `docs/M17_PACKET_RX.md`.
+
+## v1.0.0-rc4
 
 ## Co to je
 

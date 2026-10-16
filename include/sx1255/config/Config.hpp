@@ -84,6 +84,31 @@ struct M17Config {
     bool        enabled = true;
     std::string callsign = "N0CALL";
 
+    // --- RX detection and decoding -----------------------------------------
+    // Thresholds are euclidean distances in the symbol domain (ideal symbols
+    // are +-3), so a lower value is stricter.  The defaults match
+    // m17-gateway; they can be loosened for marginal signals.
+    double syncLsfThreshold    = 4.5;   // preamble + LSF sync word
+    double syncPacketThreshold = 5.0;   // packet sync word + the next frame
+    double syncStreamThreshold = 5.0;   // stream sync word + the next frame
+    double syncEotThreshold    = 4.5;   // end-of-transmission marker
+    double syncFollowThreshold = 3.5;   // sync word alone, inside a packet
+    // Sync bursts needed inside 500 ms before M17 is *declared* (a valid LSF
+    // is always trusted immediately).  Detection only decides who owns the
+    // channel; it never gates decoding, so a packet is never lost because it
+    // was too short to raise the burst count.
+    int    minSyncBurst = 5;
+    // End the M17 session when nothing valid was received for this long.
+    int    idleTimeoutMs = 1500;
+    // Keep decoding M17 while another mode owns the session, so a packet that
+    // arrives during an FM/D-Star session (or their hang time) still reaches
+    // the network.
+    bool   decodeDuringOtherSessions = true;
+    // Network -> RF packets wait in this queue instead of being dropped when
+    // the channel is briefly busy; they expire after the TTL.
+    int    networkPacketQueue = 8;
+    int    networkPacketTtlMs = 2000;
+
     // Secondary M17 inet connection for m17-bridge (APRS messaging and GNSS
     // position).  The main `reflector` stays available for voice/stream.
     struct Bridge {

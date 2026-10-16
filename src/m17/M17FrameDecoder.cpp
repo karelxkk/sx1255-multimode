@@ -826,31 +826,58 @@ void Decoder::lichLSF(const LSF& lsf, int e)
 
 void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBits)
 {
-    if (typ == LSFSync && m_syncedType == 0) {
-        m_gotLSF = false;
+    if (typ == LSFSync) {
+        // A valid LSF always starts a new transmission.  It must never be
+        // ignored because the decoder still believes it is inside an earlier
+        // stream or packet: a carrier that dropped without an EOT used to
+        // swallow every following transmission, packets included.
         auto [lsf, e] = decodeLSF(softBits);
-        if (lsf.checkCRC()) {
-            m_lsf = lsf;
-            m_gotLSF = true;
-            m_timeoutCnt = 0;
-            m_lastStreamFN = 0xffff;
-            m_lastPacketFN = 0xff;
-            m_errors = e;
-            m_bits = 368;
-
-            if ((lsf.type[1] & 1) == 1) {
-                m_syncedType = StreamSync;
-                m_lichParts = 0;
-                m_streamFN = 0;
-                m_streamID = static_cast<std::uint16_t>(m_streamCounter++);
-            } else {
-                m_syncedType = PacketSync;
-                m_packetData.assign(33 * 25, 0);
-            }
-            if (m_cb.onLSF)
-                m_cb.onLSF(*m_lsf, static_cast<double>(e) / 3.68);
+        if (!lsf.checkCRC()) {
+            m_counters.lsfBadCRC++;
+            if (m_cb.onLSFBadCRC)
+                m_cb.onLSFBadCRC(lsf, static_cast<double>(e) / 3.68);
+            return;
         }
-    } else if (typ == PacketSync && m_syncedType == PacketSync) {
+
+        if (m_syncedType == StreamSync) {
+            finishStream();
+            m_counters.resync++;
+        } else if (m_syncedType == PacketSync) {
+            if (m_lastPacketFN != 0xff)
+                dropFrame(typ, "packet abandoned: a new transmission started");
+            m_counters.resync++;
+        }
+
+        m_lsf = lsf;
+        m_gotLSF = true;
+        m_timeoutCnt = 0;
+        m_lastStreamFN = 0xffff;
+        m_lastPacketFN = 0xff;
+        m_errors = e;
+        m_bits = 368;
+        m_counters.lsf++;
+
+        if ((lsf.type[1] & 1) == 1) {
+            m_syncedType = StreamSync;
+            m_lichParts = 0;
+            m_streamFN = 0;
+            m_streamID = static_cast<std::uint16_t>(m_streamCounter++);
+        } else {
+            m_syncedType = PacketSync;
+            m_packetData.assign(33 * 25, 0);
+        }
+        if (m_cb.onLSF)
+            m_cb.onLSF(*m_lsf, static_cast<double>(e) / 3.68);
+        return;
+    }
+
+    if (typ == PacketSync) {
+        if (m_syncedType != PacketSync) {
+            // There is no packet-mode LSF behind this frame, so it cannot be
+            // routed anywhere.  Report it rather than dropping it silently.
+            dropFrame(typ, "packet frame without a valid LSF");
+            return;
+        }
         auto [pktFrame, e] = decodePacketFrame(softBits);
         m_errors += e;
         m_bits += 368;
@@ -860,27 +887,62 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
         if (lastFrame && frameNumOrByteCnt > 25)
             frameNumOrByteCnt = 25;
 
-        if (frameNumOrByteCnt <= 31 && frameNumOrByteCnt == m_lastPacketFN + 1 && !lastFrame) {
+        if (!lastFrame) {
+            // A non-last frame carries its frame number, so a frame that
+            // arrives out of order (or after a damaged one) still lands at
+            // the right offset instead of being thrown away.  The old code
+            // required frameNum == lastPacketFN + 1, which discarded every
+            // frame of a packet with more than one frame.
             const std::size_t start = static_cast<std::size_t>(frameNumOrByteCnt) * 25;
-            std::copy_n(pktFrame.begin(), 25, m_packetData.begin() + static_cast<std::ptrdiff_t>(start));
-            m_lastPacketFN++;
-        } else if (lastFrame) {
-            // m_lastPacketFN is uint8_t: 0xff + 1 must wrap to 0 for the
-            // first (and possibly only) packet frame.
-            const std::uint8_t nextFrame = static_cast<std::uint8_t>(m_lastPacketFN + 1);
-            const std::size_t start = static_cast<std::size_t>(nextFrame) * 25;
-            const std::size_t end = start + frameNumOrByteCnt;
-            std::copy_n(pktFrame.begin(), frameNumOrByteCnt,
-                        m_packetData.begin() + static_cast<std::ptrdiff_t>(start));
-            m_packetData.resize(end);
-            if (crc16(m_packetData.data(), m_packetData.size()) == 0) {
-                if (m_cb.onPacket)
-                    m_cb.onPacket(*m_lsf, m_packetData,
-                                  static_cast<double>(m_errors) / m_bits * 100.0);
+            if (start + 25 > m_packetData.size()) {
+                dropFrame(typ, "packet frame number out of range");
+                return;
             }
-            reset();
+            std::copy_n(pktFrame.begin(), 25,
+                        m_packetData.begin() + static_cast<std::ptrdiff_t>(start));
+            if (m_lastPacketFN == 0xff || frameNumOrByteCnt > m_lastPacketFN)
+                m_lastPacketFN = frameNumOrByteCnt;
+            m_counters.packetFrames++;
+            return;
         }
-    } else if (typ == StreamSync) {
+
+        // Last frame: the field is the byte count of this final chunk, which
+        // follows the highest frame number seen so far.
+        const std::uint8_t nextFrame = (m_lastPacketFN == 0xff)
+            ? 0
+            : static_cast<std::uint8_t>(m_lastPacketFN + 1);
+        const std::size_t start = static_cast<std::size_t>(nextFrame) * 25;
+        if (start >= m_packetData.size()) {
+            dropFrame(typ, "packet too long for the reassembly buffer");
+            reset();
+            return;
+        }
+        const std::size_t end = std::min(start + frameNumOrByteCnt, m_packetData.size());
+        std::copy_n(pktFrame.begin(), end - start,
+                    m_packetData.begin() + static_cast<std::ptrdiff_t>(start));
+        m_packetData.resize(end);
+        m_counters.packetFrames++;
+        if (crc16(m_packetData.data(), m_packetData.size()) == 0) {
+            m_counters.packets++;
+            if (m_cb.onPacket)
+                m_cb.onPacket(*m_lsf, m_packetData, ber());
+        } else {
+            m_counters.packetsBadCRC++;
+            if (m_cb.onPacketBadCRC)
+                m_cb.onPacketBadCRC(*m_lsf, m_packetData, ber());
+        }
+        reset();
+        return;
+    }
+
+    if (typ == StreamSync) {
+        if (m_syncedType == PacketSync) {
+            // A stream frame in the middle of a packet transmission cannot be
+            // used (no stream LSF is behind it) and must not disturb the
+            // packet that is being reassembled.
+            dropFrame(typ, "stream frame while a packet is open");
+            return;
+        }
         const StreamFrame f = decodeStreamFrame(softBits);
         const std::uint16_t fn7 = f.fn & 0x7fff;
         bool dropRepeat = fn7 == m_lastStreamFN;
@@ -910,33 +972,62 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
                 if (lastFrame && m_cb.onStreamEOT)
                     m_cb.onStreamEOT(*m_lsf, m_streamID, m_streamFN,
                                      static_cast<double>(m_errors) / m_bits * 100.0);
+            } else {
+                dropFrame(typ, "stream frame without a valid LSF");
             }
             if (lastFrame)
                 reset();
             else
                 m_lastStreamFN = f.fn;
         }
-    } else if (typ == EOTMarker && m_syncedType == StreamSync) {
-        if (m_gotLSF) {
-            m_streamFN = static_cast<std::uint16_t>((m_lastStreamFN + 1) | 0x8000);
-            if (m_cb.onStreamEOT)
-                m_cb.onStreamEOT(*m_lsf, m_streamID, m_streamFN,
-                                 static_cast<double>(m_errors) / m_bits * 100.0);
+        return;
+    }
+
+    if (typ == EOTMarker) {
+        if (m_syncedType == 0) {
+            // Stray marker in noise: nothing is running, so there is nothing
+            // to end and nothing to report.
+            return;
         }
+        if (m_syncedType == PacketSync && m_lastPacketFN != 0xff)
+            dropFrame(typ, "packet transmission ended without its last frame");
+        finishStream();
+        if (m_cb.onEOT)
+            m_cb.onEOT();
         reset();
+        return;
     }
 
     if (m_syncedType != 0) {
         m_timeoutCnt++;
         if (m_timeoutCnt > 960 * 2) {
-            if (m_syncedType == StreamSync && m_gotLSF && (m_lastStreamFN & 0x8000) != 0x8000) {
-                if (m_cb.onStreamEOT)
-                    m_cb.onStreamEOT(*m_lsf, m_streamID, m_streamFN,
-                                     static_cast<double>(m_errors) / m_bits * 100.0);
-            }
+            if (m_syncedType == PacketSync && m_lastPacketFN != 0xff)
+                dropFrame(typ, "packet timed out before its last frame");
+            finishStream();
             reset();
         }
     }
+}
+
+double Decoder::ber() const
+{
+    return m_bits > 0 ? static_cast<double>(m_errors) / m_bits * 100.0 : 0.0;
+}
+
+void Decoder::finishStream()
+{
+    if (m_syncedType != StreamSync || !m_gotLSF || !m_lsf)
+        return;
+    m_streamFN = static_cast<std::uint16_t>((m_lastStreamFN + 1) | 0x8000);
+    if (m_cb.onStreamEOT)
+        m_cb.onStreamEOT(*m_lsf, m_streamID, m_streamFN, ber());
+}
+
+void Decoder::dropFrame(std::uint16_t typ, const char* reason)
+{
+    m_counters.framesDropped++;
+    if (m_cb.onFrameDropped)
+        m_cb.onFrameDropped(typ, reason);
 }
 
 void Decoder::reset()

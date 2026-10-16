@@ -50,6 +50,13 @@ void IQDispatcher::dispatch(const IQBlock& block)
         }
         if (!owner->process(block))
             m_sessions.finishSession();
+        // The plugins that do not own the session keep monitoring it: M17
+        // packet mode must not lose a packet because another mode (FM, D-Star
+        // or their hang time) currently holds the channel.
+        for (const auto& plugin : m_registry.plugins()) {
+            if (plugin && plugin != owner)
+                plugin->monitor(block);
+        }
         return;
     }
 

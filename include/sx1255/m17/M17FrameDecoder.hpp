@@ -111,6 +111,26 @@ public:
         std::function<void(const LSF&, double ber)> onStreamLICH;
         std::function<void(const LSF&, std::uint16_t sid, std::uint16_t fn, double ber)> onStreamEOT;
         std::function<void(const LSF&, const std::vector<std::uint8_t>& payload, double ber)> onPacket;
+
+        // Diagnostics.  Nothing is ever discarded silently: an LSF or packet
+        // that fails its CRC, a frame that cannot be used and the end of a
+        // transmission are all reported to the caller.
+        std::function<void(const LSF&, double ber)> onLSFBadCRC;
+        std::function<void(const LSF&, const std::vector<std::uint8_t>& payload, double ber)> onPacketBadCRC;
+        std::function<void(std::uint16_t syncType, const char* reason)> onFrameDropped;
+        std::function<void()> onEOT;
+    };
+
+    // Frame level counters, surfaced through the plugin telemetry so an
+    // operator can see that no packet was lost.
+    struct Counters {
+        std::uint64_t lsf = 0;             // LSFs accepted (CRC ok)
+        std::uint64_t lsfBadCRC = 0;
+        std::uint64_t resync = 0;          // LSF accepted over an open transmission
+        std::uint64_t packets = 0;         // packets delivered
+        std::uint64_t packetsBadCRC = 0;
+        std::uint64_t packetFrames = 0;    // packet frames written into the buffer
+        std::uint64_t framesDropped = 0;   // sync bursts that could not be used
     };
 
     explicit Decoder(Callbacks callbacks);
@@ -120,6 +140,8 @@ public:
 
     bool gotLSF() const { return m_gotLSF; }
     const LSF* currentLSF() const { return m_lsf ? &m_lsf.value() : nullptr; }
+    Counters counters() const { return m_counters; }
+    std::uint16_t syncedType() const { return m_syncedType; }
 
 private:
     std::pair<LSF, int> decodeLSF(const std::vector<SoftBit>& softBits);
@@ -129,6 +151,12 @@ private:
     int channelBitErrors(const std::vector<std::uint8_t>& data, const PuncturePattern& pp,
                          std::uint8_t finalBit, const std::vector<SoftBit>& received);
     void lichLSF(const LSF& lsf, int e);
+    double ber() const;
+    // finishStream closes an open stream with an EOT, used when another
+    // transmission starts before the current one ended cleanly.
+    void finishStream();
+    // dropFrame reports a sync burst that could not be turned into data.
+    void dropFrame(std::uint16_t typ, const char* reason);
 
     Callbacks m_cb;
     std::uint16_t m_syncedType = 0;
@@ -146,6 +174,7 @@ private:
     int m_errors = 0;
     int m_bits = 0;
     std::uint32_t m_streamCounter = 1;
+    Counters m_counters{};
 };
 
 }  // namespace sx1255::m17

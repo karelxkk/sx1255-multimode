@@ -7,8 +7,7 @@
 
 namespace sx1255::m17 {
 
-std::pair<float, std::uint16_t> syncDistance(const std::vector<Symbol>& symbols,
-                                             int offset, int sps)
+SyncMetrics syncMetrics(const std::vector<Symbol>& symbols, int offset, int sps)
 {
     double lsf = 0, pkt = 0, pkte = 0, pkta = 0, pktb = 0;
     double str = 0, stre = 0, stra = 0, strb = 0, eote = 0, eot = 0;
@@ -54,13 +53,31 @@ std::pair<float, std::uint16_t> syncDistance(const std::vector<Symbol>& symbols,
     str = std::sqrt(stra + strb);
     stre = std::sqrt(stra + eote);
 
-    const double vals[6] = {lsf, pkt, pkte, str, stre, eot};
+    SyncMetrics metrics;
+    metrics.lsf = static_cast<float>(lsf);
+    metrics.packetPair = static_cast<float>(pkt);
+    metrics.packetEnd = static_cast<float>(pkte);
+    metrics.streamPair = static_cast<float>(str);
+    metrics.streamEnd = static_cast<float>(stre);
+    metrics.eotPair = static_cast<float>(eot);
+    metrics.packetOnly = static_cast<float>(std::sqrt(pkta));
+    metrics.streamOnly = static_cast<float>(std::sqrt(stra));
+    return metrics;
+}
+
+std::pair<float, std::uint16_t> syncDistance(const std::vector<Symbol>& symbols,
+                                             int offset, int sps)
+{
+    const SyncMetrics metrics = syncMetrics(symbols, offset, sps);
+    const float distances[6] = {
+        metrics.lsf, metrics.packetPair, metrics.packetEnd,
+        metrics.streamPair, metrics.streamEnd, metrics.eotPair};
     int mi = 0;
     for (int i = 1; i < 6; ++i)
-        if (vals[i] < vals[mi])
+        if (distances[i] < distances[mi])
             mi = i;
 
-    const float m = static_cast<float>(vals[mi]);
+    const float m = distances[mi];
     switch (mi) {
         case 0:  return {m, LSFSync};
         case 1:
@@ -71,8 +88,8 @@ std::pair<float, std::uint16_t> syncDistance(const std::vector<Symbol>& symbols,
     }
 }
 
-M17Synchronizer::M17Synchronizer(int sps, FrameSink sink)
-    : m_sps(sps), m_sink(std::move(sink))
+M17Synchronizer::M17Synchronizer(int sps, FrameSink sink, SyncThresholds thresholds)
+    : m_sps(sps), m_sink(std::move(sink)), m_thresholds(thresholds)
 {
     m_bufSize = static_cast<std::size_t>(
         8 * sps + 2 * (8 * sps + static_cast<int>(SymbolsPerFrame) * sps) + sps / 2 + 256);
@@ -116,41 +133,53 @@ void M17Synchronizer::push(float sample)
     if (m_symbols.size() < m_bufSize)
         return;
 
-    const auto [dist, typ] = syncDistance(m_symbols, 0, m_sps);
-    bool handled = false;
+    const SyncMetrics metrics = syncMetrics(m_symbols, 0, m_sps);
 
-    switch (typ) {
-        case LSFSync:
-            if (dist < 4.5F) {
-                extractPayload(dist, typ);
-                handled = true;
-            }
-            break;
-        case PacketSync:
-            if (dist < 5.0F) {
-                extractPayload(dist, typ);
-                handled = true;
-            }
-            break;
-        case StreamSync:
-            if (dist < 5.0F) {
-                extractPayload(dist, typ);
-                handled = true;
-            }
-            break;
-        case EOTMarker:
-            if (dist < 4.5F) {
-                m_symbols.erase(m_symbols.begin(), m_symbols.begin() + 16 * m_sps);
-                m_sink(typ, {});
-                handled = true;
-            }
-            break;
-        default:
-            break;
+    // Blind detection: the classic best-of-six candidates, each against its own
+    // threshold (m17-gateway compares the winner against its limit).
+    const struct {
+        float distance;
+        std::uint16_t type;
+        float limit;
+    } candidates[6] = {
+        {metrics.lsf, LSFSync, m_thresholds.lsf},
+        {metrics.packetPair, PacketSync, m_thresholds.packet},
+        {metrics.packetEnd, PacketSync, m_thresholds.packet},
+        {metrics.streamPair, StreamSync, m_thresholds.stream},
+        {metrics.streamEnd, StreamSync, m_thresholds.stream},
+        {metrics.eotPair, EOTMarker, m_thresholds.eot},
+    };
+    int best = 0;
+    for (int i = 1; i < 6; ++i)
+        if (candidates[i].distance < candidates[best].distance)
+            best = i;
+
+    float dist = candidates[best].distance;
+    std::uint16_t typ = 0;
+    if (dist < candidates[best].limit)
+        typ = candidates[best].type;
+
+    // Follow mode: while a packet transmission is being received, the sync word
+    // of the frame alone identifies it.  This only adds detections the blind
+    // search missed, so a packet whose last frame is not followed by another
+    // sync word or by the EOT marker still arrives.
+    if (typ == 0 && m_expectedType == PacketSync && metrics.packetOnly < m_thresholds.follow) {
+        typ = PacketSync;
+        dist = metrics.packetOnly;
     }
 
-    if (!handled)
+    if (typ == 0) {
         m_symbols.erase(m_symbols.begin());
+        return;
+    }
+
+    if (typ == EOTMarker) {
+        m_symbols.erase(m_symbols.begin(), m_symbols.begin() + 16 * m_sps);
+        m_sink(typ, {});
+        return;
+    }
+
+    extractPayload(dist, typ);
 }
 
 }  // namespace sx1255::m17

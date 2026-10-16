@@ -221,6 +221,24 @@ bool SessionManager::acquireTx(Mode mode)
     return true;
 }
 
+// acquireTxPacket is the arbiter entry point for data packets coming from the
+// network.  It only checks that the transmitter is free: the network audio
+// source (FM/SVXLink vs M17 vs D-Star) must not decide whether an APRS message
+// or an SMS reaches the radio, otherwise a packet is silently lost after every
+// restart or FM session while network.mode is "auto".
+bool SessionManager::acquireTxPacket(Mode mode)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (isActiveState(m_state) || m_state == State::Timeout)
+        return false;
+
+    m_owner.reset();
+    m_state = (mode == Mode::FM) ? State::ActiveSvxlink : State::ActiveM17Network;
+    m_sessionId = ++m_sessionCounter;
+    m_activeSince = Clock::now();
+    return true;
+}
+
 void SessionManager::releaseTx()
 {
     std::lock_guard<std::mutex> lock(m_mutex);

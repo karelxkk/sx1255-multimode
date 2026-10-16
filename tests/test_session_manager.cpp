@@ -69,5 +69,25 @@ int main()
     if (sessions.state() != SessionManager::State::Idle)
         return 14;
 
+    // A data packet must reach the radio even when the network audio source is
+    // another mode: an APRS message cannot be lost just because the last local
+    // session was FM (network.mode = auto after a restart).
+    sessions.setPreferredNetworkMode(Mode::Unknown);
+    auto fm2 = std::make_shared<test::MockPlugin>(
+        "fm2", Mode::FM, 10, [](const IQBlock&) { return Detection{true, 0.9F}; });
+    std::vector<DetectionReport> fmReports = {{fm2, fm2->detect(IQBlock{})}};
+    if (sessions.evaluateDetections(fmReports, nullptr) != fm2.get())
+        return 15;
+    if (sessions.networkMode() != Mode::FM)
+        return 16;
+    sessions.finishSession();
+    sessions.timeoutCheck();
+
+    if (sessions.acquireTx(Mode::M17))
+        return 17;   // network audio of another mode stays blocked
+    if (!sessions.acquireTxPacket(Mode::M17))
+        return 18;   // but packets are data and must go through
+    sessions.releaseTx();
+
     return 0;
 }

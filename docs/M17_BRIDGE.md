@@ -53,6 +53,12 @@ APRS-IS --> m17-bridge -- M17 packet/stream --> multimode --> RF
 - `m17_packet_loopback` — M17 packet TX → RX dekóduje stejný typ, payload
   i CRC.
 
+## Příjem packetů
+
+Jak je zaručené, že se neztratí žádný packet (co bylo opravené, jaké jsou
+čítače v telemetrii a jak ladit prahy), popisuje
+[M17_PACKET_RX.md](M17_PACKET_RX.md).
+
 ## Webové rozhraní
 
 `m17-bridge` umí webový dashboard se seznamem odeslaných i přijatých zpráv a

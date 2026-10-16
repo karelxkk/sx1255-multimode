@@ -23,6 +23,13 @@ public:
     // session currently owns it.
     virtual bool acquireTx(Mode mode) = 0;
 
+    // Try to reserve the transmitter for a data packet coming from the
+    // network.  A packet is data for its own mode, so this must not depend on
+    // the network audio source the way acquireTx() does: an APRS message for
+    // a radio is not dropped just because SVXLink currently owns the network
+    // audio.  The default keeps the stricter behaviour.
+    virtual bool acquireTxPacket(Mode mode) { return acquireTx(mode); }
+
     // Release a previously acquired transmit reservation.
     virtual void releaseTx() = 0;
 };
@@ -80,6 +87,13 @@ public:
     // Process the next block.  Return false when the session is finished
     // (EOT / carrier lost); the session manager will then release ownership.
     virtual bool process(const IQBlock& block) = 0;
+
+    // Keep the plugin's receive path alive while another plugin owns the
+    // session.  Modes that can receive data outside their own session (M17
+    // packet mode, which carries messages and not voice) override this so a
+    // packet is not lost while another mode holds the channel.  The default
+    // does nothing.
+    virtual void monitor(const IQBlock&) {}
 
     // Ownership is being released (normal end, timeout or shutdown).
     virtual void stopSession() = 0;

@@ -311,6 +311,19 @@ Config loadConfig(const std::string& path)
     const YamlNode* m17 = child(*modes, "m17");
     config.m17.enabled = asBool(*m17, "enabled");
     config.m17.callsign = optString(*m17, "callsign", config.m17.callsign);
+    config.m17.syncLsfThreshold = optDouble(*m17, "sync_lsf_threshold", config.m17.syncLsfThreshold);
+    config.m17.syncPacketThreshold = optDouble(*m17, "sync_packet_threshold", config.m17.syncPacketThreshold);
+    config.m17.syncStreamThreshold = optDouble(*m17, "sync_stream_threshold", config.m17.syncStreamThreshold);
+    config.m17.syncEotThreshold = optDouble(*m17, "sync_eot_threshold", config.m17.syncEotThreshold);
+    config.m17.syncFollowThreshold = optDouble(*m17, "sync_follow_threshold", config.m17.syncFollowThreshold);
+    config.m17.minSyncBurst = static_cast<int>(optInt(*m17, "min_sync_burst", config.m17.minSyncBurst));
+    config.m17.idleTimeoutMs = static_cast<int>(optInt(*m17, "idle_timeout_ms", config.m17.idleTimeoutMs));
+    config.m17.decodeDuringOtherSessions =
+        optBool(*m17, "decode_during_other_sessions", config.m17.decodeDuringOtherSessions);
+    config.m17.networkPacketQueue =
+        static_cast<int>(optInt(*m17, "network_packet_queue", config.m17.networkPacketQueue));
+    config.m17.networkPacketTtlMs =
+        static_cast<int>(optInt(*m17, "network_packet_ttl_ms", config.m17.networkPacketTtlMs));
     if (hasKey(*m17, "bridge")) {
         const YamlNode* bridge = child(*m17, "bridge");
         config.m17.bridge.enabled  = optBool(*bridge, "enabled", false);
@@ -443,6 +456,17 @@ std::string serializeConfig(const Config& config)
     out << "  m17:\n";
     out << "    enabled: " << (config.m17.enabled ? "true" : "false") << '\n';
     out << "    callsign: " << config.m17.callsign << '\n';
+    out << "    sync_lsf_threshold: " << config.m17.syncLsfThreshold << '\n';
+    out << "    sync_packet_threshold: " << config.m17.syncPacketThreshold << '\n';
+    out << "    sync_stream_threshold: " << config.m17.syncStreamThreshold << '\n';
+    out << "    sync_eot_threshold: " << config.m17.syncEotThreshold << '\n';
+    out << "    sync_follow_threshold: " << config.m17.syncFollowThreshold << '\n';
+    out << "    min_sync_burst: " << config.m17.minSyncBurst << '\n';
+    out << "    idle_timeout_ms: " << config.m17.idleTimeoutMs << '\n';
+    out << "    decode_during_other_sessions: "
+        << (config.m17.decodeDuringOtherSessions ? "true" : "false") << '\n';
+    out << "    network_packet_queue: " << config.m17.networkPacketQueue << '\n';
+    out << "    network_packet_ttl_ms: " << config.m17.networkPacketTtlMs << '\n';
     out << "    bridge:\n";
     out << "      enabled: " << (config.m17.bridge.enabled ? "true" : "false") << '\n';
     out << "      host: " << config.m17.bridge.host << '\n';

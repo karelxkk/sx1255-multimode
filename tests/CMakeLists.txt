@@ -60,6 +60,15 @@ add_executable(test_m17_packet_loopback test_m17_packet_loopback.cpp)
 target_link_libraries(test_m17_packet_loopback PRIVATE sx1255_core)
 add_test(NAME m17_packet_loopback COMMAND test_m17_packet_loopback)
 
+add_executable(test_m17_packet_frames test_m17_packet_frames.cpp)
+target_link_libraries(test_m17_packet_frames PRIVATE sx1255_core)
+add_test(NAME m17_packet_frames COMMAND test_m17_packet_frames)
+
+add_executable(test_m17_packet_pipeline test_m17_packet_pipeline.cpp)
+target_link_libraries(test_m17_packet_pipeline PRIVATE sx1255_core)
+add_test(NAME m17_packet_pipeline COMMAND test_m17_packet_pipeline)
+set_tests_properties(m17_packet_pipeline PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(test_m17_tx_chain test_m17_tx_chain.cpp)
 target_link_libraries(test_m17_tx_chain PRIVATE sx1255_core)
 add_test(NAME m17_tx_chain COMMAND test_m17_tx_chain)

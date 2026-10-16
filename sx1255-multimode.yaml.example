@@ -90,6 +90,26 @@ modes:
   m17:
     enabled: true             # zapnout M17 plugin
     callsign: N0CALL
+    # --- Příjem packetů (SMS, poloha) -----------------------------------
+    # Prahy synchronizace jsou euklidovské vzdálenosti v symbolové doméně
+    # (ideální symboly jsou +-3), takže nižší hodnota = přísnější.  Výchozí
+    # hodnoty jsou z m17-gateway; vyšší číslo pomůže na slabších signálech.
+    sync_lsf_threshold: 4.5      # preamble + LSF sync
+    sync_packet_threshold: 5.0   # packet sync + následující rámec
+    sync_stream_threshold: 5.0   # stream sync + následující rámec
+    sync_eot_threshold: 4.5      # značka konce přenosu
+    sync_follow_threshold: 3.5   # samotný packet sync uvnitř přenosu
+    # Počet sync burstů v 500 ms, po kterém se M17 vyhlásí jako aktivní mód.
+    # Slouží jen k rozhodnutí, kdo vlastní kanál - dekódování packetů na tom
+    # nezávisí, takže krátká SMS se neztratí.
+    min_sync_burst: 5
+    idle_timeout_ms: 1500        # konec M17 relace po tichu
+    # Dekódovat M17 i když relaci vlastní jiný mód (FM, D-Star nebo jejich
+    # hang time) - packet se tak neztratí, když je kanál zrovna obsazený.
+    decode_during_other_sessions: true
+    # Packety ze sítě čekají na volný kanál ve frontě (místo zahození).
+    network_packet_queue: 8
+    network_packet_ttl_ms: 2000
     bridge:
       enabled: false          # m17-bridge pro APRS zprávy a polohu
       host: 127.0.0.1         # kde běží m17-bridge

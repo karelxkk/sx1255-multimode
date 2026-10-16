@@ -84,6 +84,7 @@ public:
 
     // ITxArbiter
     bool acquireTx(Mode mode) override;
+    bool acquireTxPacket(Mode mode) override;
     void releaseTx() override;
 
     // Mode the operator last used on a local (RF) reception.  A network source

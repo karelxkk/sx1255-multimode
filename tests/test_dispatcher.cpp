@@ -47,6 +47,13 @@ int main()
         return 4;
     if (fmDetections != 1)
         return 5;
+    // The plugin that does not own the session still monitors the channel, so
+    // a mode that carries data (M17 packet mode) cannot lose a packet while
+    // another mode holds the session.
+    if (fm->log.monitors != 1)
+        return 8;
+    if (m17->log.monitors != 0)
+        return 9;
 
     // Third block: M17 reports end of session.
     m17->processResult = false;
