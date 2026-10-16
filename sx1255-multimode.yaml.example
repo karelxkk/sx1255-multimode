@@ -21,8 +21,12 @@ frontend:
     # Tento HAT (B2) používá jen reset na GPIO25. RX/TX přepíná čip přes SPI,
     # takže rx_enable/tx_enable/ptt jsou -1 (vypnuto). Pozor: GPIO18 je I2S
     # BCLK, nikdy ho nepoužívat jako PTT!
+    # tx_enable: pin pro ovládání externího PA (TX enable); -1 = nezapojeno.
     tx_enable: -1
+    # rx_enable: pin pro ovládání externího LNA/RX enable; -1 = nezapojeno.
     rx_enable: -1
+    # ptt: pin pro ovládání externí PA (PTT); -1 = nezapojeno.
+    #      Sem patří BCM číslo GPIO, které má klíčovat PA.
     ptt: -1
 
   alsa:
