@@ -16,7 +16,7 @@ frontend:
     speed: 500000             # SPI clock
 
   gpio:
-    chip: /dev/gpiochip0
+    chip: /dev/gpiochip0     # gpiochip pro reset/PTT
     reset: 25                 # BCM GPIO25 = reset SX1255
     # Tento HAT (B2) používá jen reset na GPIO25. RX/TX přepíná čip přes SPI,
     # takže rx_enable/tx_enable/ptt jsou -1 (vypnuto). Pozor: GPIO18 je I2S
@@ -36,7 +36,7 @@ frontend:
 
 modes:
   fm:
-    enabled: true
+    enabled: true             # zapnout FM plugin
     ctcss_rx: 88.5            # CTCSS tón, který otevírá RX
     ctcss_tx: 88.5            # CTCSS tón na TX; použije se při backend: local
     hang_time_ms: 3000        # dojezd po ztrátě nosné
@@ -67,7 +67,7 @@ modes:
       #   [Tx1] CTCSS_FQ=88.5, CTCSS_LEVEL=-24
 
   dstar:
-    enabled: true
+    enabled: true             # zapnout D-Star plugin
     callsign: OK1LBC           # RPT1/RPT2 pro lokální převaděč
     tx_preamble_bytes: 210
     tx_tail_ms: 50
@@ -81,13 +81,13 @@ modes:
       name: sx1255-multimode
 
   m17:
-    enabled: true
+    enabled: true             # zapnout M17 plugin
     callsign: N0CALL
     reflector:
-      enabled: false
-      host: reflector.example.org
-      port: 17000
-      module: A
+      enabled: false           # připojit se k M17 reflektor
+      host: reflector.example.org  # adresa reflektoru
+      port: 17000             # UDP port reflektoru
+      module: A               # modul reflektoru
 
 # Síťový zdroj pro směr síť -> RF:
 #   auto  = použije se naposledy použitý lokální mód
@@ -99,29 +99,29 @@ network:
 
 # Záznam živého IQ do souboru.
 recording:
-  enabled: false
-  file: capture.iq
+  enabled: false              # zapnout záznam živého IQ
+  file: capture.iq            # soubor pro záznam
 
 # Přehrání IQ ze souboru místo reálného rádia.
 replay:
-  enabled: false
-  file: capture.iq
+  enabled: false              # přehrát IQ ze souboru místo rádia
+  file: capture.iq            # soubor pro replay
 
 # Diagnostika v prohlížeči: http://<ip>:8080/
 spectrum:
-  enabled: true
-  fft_size: 4096
-  update_hz: 5
-  waterfall_rows: 500
-  waterfall_bins: 256
+  enabled: true               # zapnout spektrum/waterfall
+  fft_size: 4096              # velikost FFT
+  update_hz: 5                # obnovovací frekvence
+  waterfall_rows: 500         # počet řádků historie
+  waterfall_bins: 256         # počet binů waterfallu
 
 # Automatické uložení IQ (pre + post okno) při podezřelé události.
 automatic_capture:
-  enabled: false
-  directory: /var/lib/sx1255-multimode
-  pre_seconds: 10
-  post_seconds: 10
+  enabled: false              # zapnout automatický IQ capture
+  directory: /var/lib/sx1255-multimode    # kam ukládat záznamy
+  pre_seconds: 10             # kolik sekund před triggerem
+  post_seconds: 10            # kolik sekund po triggeru
   trigger:
-    false_positive: true
-    unknown_signal: true
-    crash: true
+    false_positive: true      # trigger při falešné detekci
+    unknown_signal: true      # trigger při neznámém signálu
+    crash: true               # trigger při pádu
