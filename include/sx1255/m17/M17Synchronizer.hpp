@@ -10,17 +10,18 @@
 
 namespace sx1255::m17 {
 
-// Detection thresholds.  The defaults are m17-gateway's; they can be loosened
-// in the configuration when signals are marginal.
+// Detection thresholds.  Measured on a real radio (OpenRTX): real LSFs land at
+// 1.4-4.4 and real frames at 2.7-3.8, while anything that is not a sync word
+// stays above ~11.5.  The defaults sit in that gap with margin on both sides.
 struct SyncThresholds {
-    float lsf = 4.5F;
+    float lsf = 7.5F;
     float packet = 5.0F;
     float stream = 5.0F;
     float eot = 4.5F;
-    // Single-sync-word threshold used while a packet transmission is already
-    // running (see setExpectedType).  The double window is worth sqrt(2) more,
-    // so this is the equivalent single-window value.
-    float follow = 3.5F;
+    // Single-sync-word threshold used while a transmission is already running
+    // (see setExpectedType).  A real frame matches its sync word at ~3, so 4.5
+    // keeps a margin while staying far below the ~9 of a non-match.
+    float follow = 4.5F;
 };
 
 // SyncMetrics holds the individual euclidean distances of one sync search

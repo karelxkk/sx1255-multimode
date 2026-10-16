@@ -95,17 +95,23 @@ zkontrolovat úroveň/vf cestu.
 
 ```yaml
 m17:
-  sync_lsf_threshold: 4.5      # preamble + LSF sync (nižší = přísnější)
+  sync_lsf_threshold: 7.5      # preamble + LSF sync (nižší = přísnější)
   sync_packet_threshold: 5.0   # packet sync + následující rámec
   sync_stream_threshold: 5.0   # stream sync + následující rámec
   sync_eot_threshold: 4.5      # značka konce přenosu
-  sync_follow_threshold: 3.5   # samotný packet sync uvnitř přenosu
+  sync_follow_threshold: 4.5   # samotný packet sync uvnitř packet přenosu
   min_sync_burst: 5            # kolik synců v 500 ms vyhlásí M17 jako mód
   idle_timeout_ms: 1500        # konec relace po tichu
   decode_during_other_sessions: true
   network_packet_queue: 8
   network_packet_ttl_ms: 2000
 ```
+
+Prahy vycházejí z měření reálné stanice (OpenRTX): skutečné LSF mají vzdálenost
+1,4–4,4, rámce 2,7–3,8 a cokoliv, co sync slovo není, zůstává nad ~11,5. Výchozí
+hodnoty proto leží v této mezeře — dřívější práh LSF 4,5 byl uvnitř rozptylu
+skutečných přenosů, takže se ztrácely celé zprávy, když byla slabá jen hlavička
+(rámce byly slyšet dobře, ale bez hlavičky se nedaly doručit).
 
 - `min_sync_burst` ovlivňuje jen to, kdo dostane kanál. Dekódování packetů na něm
   nezávisí, takže krátká SMS se neztratí ani při vysoké hodnotě.

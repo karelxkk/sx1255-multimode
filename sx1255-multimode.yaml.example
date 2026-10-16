@@ -92,13 +92,15 @@ modes:
     callsign: N0CALL
     # --- Příjem packetů (SMS, poloha) -----------------------------------
     # Prahy synchronizace jsou euklidovské vzdálenosti v symbolové doméně
-    # (ideální symboly jsou +-3), takže nižší hodnota = přísnější.  Výchozí
-    # hodnoty jsou z m17-gateway; vyšší číslo pomůže na slabších signálech.
-    sync_lsf_threshold: 4.5      # preamble + LSF sync
+    # (ideální symboly jsou +-3), takže nižší hodnota = přísnější.  Naměřeno
+    # na reálném signálu z OpenRTX: skutečné LSF mají 1,4-4,4, rámce 2,7-3,8
+    # a cokoliv, co sync slovo není, zůstává nad ~11,5 - výchozí hodnoty leží
+    # v této mezeře.
+    sync_lsf_threshold: 7.5      # preamble + LSF sync
     sync_packet_threshold: 5.0   # packet sync + následující rámec
     sync_stream_threshold: 5.0   # stream sync + následující rámec
     sync_eot_threshold: 4.5      # značka konce přenosu
-    sync_follow_threshold: 3.5   # samotný packet sync uvnitř přenosu
+    sync_follow_threshold: 4.5   # samotný packet sync uvnitř packet přenosu
     # Počet sync burstů v 500 ms, po kterém se M17 vyhlásí jako aktivní mód.
     # Slouží jen k rozhodnutí, kdo vlastní kanál - dekódování packetů na tom
     # nezávisí, takže krátká SMS se neztratí.

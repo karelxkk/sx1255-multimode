@@ -88,11 +88,11 @@ struct M17Config {
     // Thresholds are euclidean distances in the symbol domain (ideal symbols
     // are +-3), so a lower value is stricter.  The defaults match
     // m17-gateway; they can be loosened for marginal signals.
-    double syncLsfThreshold    = 4.5;   // preamble + LSF sync word
+    double syncLsfThreshold    = 7.5;   // preamble + LSF sync word
     double syncPacketThreshold = 5.0;   // packet sync word + the next frame
     double syncStreamThreshold = 5.0;   // stream sync word + the next frame
     double syncEotThreshold    = 4.5;   // end-of-transmission marker
-    double syncFollowThreshold = 3.5;   // sync word alone, inside a packet
+    double syncFollowThreshold = 4.5;   // sync word alone, inside a transmission
     // Sync bursts needed inside 500 ms before M17 is *declared* (a valid LSF
     // is always trusted immediately).  Detection only decides who owns the
     // channel; it never gates decoding, so a packet is never lost because it
