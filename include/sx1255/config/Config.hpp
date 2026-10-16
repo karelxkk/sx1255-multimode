@@ -13,6 +13,9 @@ struct FrontendConfig {
     Hertz       rxFrequency = 430975000;
     Hertz       txFrequency = 438575000;
     dBm         power       = 10;
+    // Reserved: RSSI-based squelch is not implemented yet.  Kept in the
+    // frontend interface for a future implementation; the YAML key is
+    // optional and no longer part of the example configuration.
     dBm         squelch     = -120;
     std::size_t blockSize   = 2048;
 

@@ -222,7 +222,10 @@ Config loadConfig(const std::string& path)
     config.frontend.txFrequency = static_cast<Hertz>(asInt(*frontend, "tx_freq"));
     config.frontend.power       = static_cast<dBm>(
         hasKey(*frontend, "tx_power") ? asInt(*frontend, "tx_power") : asInt(*frontend, "power"));
-    config.frontend.squelch     = static_cast<dBm>(asInt(*frontend, "squelch"));
+    // Legacy/optional: RSSI-based squelch is not implemented yet, so a
+    // missing key must not prevent startup.
+    config.frontend.squelch     = static_cast<dBm>(
+        optInt(*frontend, "squelch", config.frontend.squelch));
     if (frontend->map.count("block_size"))
         config.frontend.blockSize = static_cast<std::size_t>(asInt(*frontend, "block_size"));
 
@@ -376,7 +379,6 @@ std::string serializeConfig(const Config& config)
     out << "  rx_freq: " << config.frontend.rxFrequency << '\n';
     out << "  tx_freq: " << config.frontend.txFrequency << '\n';
     out << "  tx_power: " << config.frontend.power << '\n';
-    out << "  squelch: " << config.frontend.squelch << '\n';
     out << "  block_size: " << config.frontend.blockSize << '\n';
     out << "  spi:\n";
     out << "    device: " << config.frontend.spiDevice << '\n';

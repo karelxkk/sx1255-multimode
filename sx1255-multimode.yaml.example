@@ -9,9 +9,6 @@ frontend:
   rx_freq: 430975000          # RX 430.975 MHz
   tx_freq: 438575000          # TX 438.575 MHz
   tx_power: 10                # výkon v dBm (0-10)
-  # Naměřené minimum RSSI je na tomto HW cca -60 (relativní dBFS, ne dBm).
-  # FM plugin používá pro squelch CTCSS; hodnota je zatím jen informativní.
-  squelch: -60
   block_size: 2048            # počet IQ vzorků na blok
 
   spi:

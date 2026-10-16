@@ -15,9 +15,9 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 - Ukázková i cílová konfigurace jsou komentované po jednotlivých sekcích a
   klíčích.
 - RSSI na SX1255 je relativní (počítané z I/Q výkonu); naměřené minimum je
-  cca -60. `squelch` je proto nastavený na -60 a dokumentovaný jako
-  informativní, protože FM squelch řídí CTCSS. Zvýšení LNA na 42 dB RSSI
-  nezměnilo.
+  cca -60 a zvýšení LNA na 42 dB ho nezměnilo. RSSI squelch zatím není
+  implementovaný, takže se nesmyslný `squelch` klíč přestal uvádět v ukázkové
+  konfiguraci (parser ho kvůli zpětné kompatibilitě pořád přijme).
 
 ## [1.0.0-rc4] — 2026-10-16
 

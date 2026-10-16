@@ -41,7 +41,6 @@ int main()
         "  rx_freq: 430975000\n"
         "  tx_freq: 438575000\n"
         "  power: 10\n"
-        "  squelch: -120\n"
         "\n"
         "modes:\n"
         "  fm:\n"

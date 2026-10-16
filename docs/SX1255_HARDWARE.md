@@ -96,8 +96,8 @@ do ALSA. Díky odděleným vláknům RX běží i během TX (plný duplex).
   přesně jako to dělá m17-gateway ve FMDemodAFC. Absolutní kalibrace v dBm
   vyžaduje měření. Na tomto HW je naměřené minimum přibližně **-60**
   (relativní dBFS); zvýšení LNA z 24 na 42 dB v testu hodnotu nezměnilo.
-  `squelch` v konfiguraci je proto zatím pouze informativní — FM plugin
-  otevírá squelch podle CTCSS, ne podle RSSI.
+  RSSI squelch zatím není implementovaný, proto se `squelch` v ukázkové
+  konfiguraci neuvádí; FM plugin otevírá squelch podle CTCSS, ne podle RSSI.
 
 ## Diagnostika
 
