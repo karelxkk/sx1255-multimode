@@ -1,70 +1,86 @@
+# sx1255-multimode – ukázková konfigurace
+#
+# Po úpravě restartuj službu:
+#   sudo systemctl restart sx1255-multimode
+
 frontend:
+  # sx1255 = reálný SX1255 HAT, null = bez rádia, replay = IQ soubor
   type: sx1255
-  rx_freq: 430975000
-  tx_freq: 438575000
-  tx_power: 10
-  squelch: -120
-  block_size: 2048
+  rx_freq: 430975000          # RX 430.975 MHz
+  tx_freq: 438575000          # TX 438.575 MHz
+  tx_power: 10                # výkon v dBm (0-10)
+  squelch: -120               # RSSI squelch
+  block_size: 2048            # počet IQ vzorků na blok
+
   spi:
-    device: /dev/spidev0.0
-    speed: 500000
+    device: /dev/spidev0.0    # SPI sběrnice k SX1255
+    speed: 500000             # SPI clock
+
   gpio:
     chip: /dev/gpiochip0
-    reset: 25
+    reset: 25                 # BCM GPIO25 = reset SX1255
     # Tento HAT (B2) používá jen reset na GPIO25. RX/TX přepíná čip přes SPI,
     # takže rx_enable/tx_enable/ptt jsou -1 (vypnuto). Pozor: GPIO18 je I2S
     # BCLK, nikdy ho nepoužívat jako PTT!
     tx_enable: -1
     rx_enable: -1
     ptt: -1
+
   alsa:
-    capture: hw:GenericStereoAu,1,0
-    playback: hw:GenericStereoAu,0,0
-  lna_gain: 24
-  pga_gain: 0
-  dac_gain: -3
-  mixer_gain: -12
+    capture: hw:GenericStereoAu,1,0    # I2S RX, 125 kSa/s stereo IQ
+    playback: hw:GenericStereoAu,0,0   # I2S TX, 125 kSa/s stereo IQ
+
+  lna_gain: 24                # RX LNA zisk
+  pga_gain: 0                 # RX PGA zisk
+  dac_gain: -3                # TX DAC útlum
+  mixer_gain: -12             # TX mixer
 
 modes:
   fm:
     enabled: true
-    ctcss_rx: 88.5
-    # ctcss_tx se používá jen při backend: local. V backendu svxlink tón na TX
-    # generuje SVXLink: [RepeaterLogic]/[ReflectorLogic] TX_CTCSS=ALWAYS,
-    # [Tx1] CTCSS_FQ=88.5, CTCSS_LEVEL=-24.
-    # ctcss_tx: 88.5
-    hang_time_ms: 3000
-    # backend: local  = interní RX->TX bridge (výchozí)
-    # backend: svxlink = SVXLink dělá logiku/síť, multimode je RF<->audio bridge
+    ctcss_rx: 88.5            # CTCSS tón, který otevírá RX
+    ctcss_tx: 88.5            # CTCSS tón na TX; použije se při backend: local
+    hang_time_ms: 3000        # dojezd po ztrátě nosné
+
+    # backend: local  = multimode sám dělá FM převaděč (CTCSS RX/TX, hang)
+    # backend: svxlink = multimode je jen RF<->audio bridge, logiku, squelch,
+    #                    CTCSS a síť dělá SVXLink
     backend: local
+
     svxlink:
       audio_capture: plughw:Loopback,1,0     # TX audio ze SVXLinku
       audio_playback: plughw:Loopback,0,1    # RX audio do SVXLinku
       pty: /run/svxlink/ptt                  # SVXLink PTT_TYPE=PTY
-      sql_pty: /run/svxlink/sql              # SQL_DET=SERIAL (CTS)
-      sql_pty_owner: svxlink                 # vlastník slave PTY (může být prázdné)
+      sql_pty: /run/svxlink/sql              # SQL PTY
+      sql_pty_owner: svxlink                 # vlastník slave PTY
       audio_rate: 16000
       rx_max_dev_hz: 2500
       tx_dev_hz: 2500
       tx_gain: 1.75
-      # Zvukové tvarování (default = NFM 12.5 kHz).  Pro široké FM (25 kHz)
+      # Zvukové tvarování (default = NFM 12.5 kHz). Pro široké FM (25 kHz)
       # zvedni rx_audio_lpf_hz / tx_audio_lpf_hz na ~4000-5000.
       rx_deemph_us: 75            # RX de-emfáze
       tx_preemph_us: 75           # TX pre-emfáze
       rx_audio_lpf_hz: 3000       # RX audio low-pass
       tx_audio_lpf_hz: 3000       # TX audio low-pass
+      # CTCSS na TX v backendu svxlink generuje SVXLink:
+      #   [RepeaterLogic]/[ReflectorLogic] TX_CTCSS=ALWAYS
+      #   [Tx1] CTCSS_FQ=88.5, CTCSS_LEVEL=-24
+
   dstar:
     enabled: true
-    callsign: OK1LBC
+    callsign: OK1LBC           # RPT1/RPT2 pro lokální převaděč
     tx_preamble_bytes: 210
     tx_tail_ms: 50
+
     gateway:
-      enabled: false
+      enabled: false           # DSRP gateway (DStarGateway/ircDDBGateway)
       address: 127.0.0.1
-      port: 20010
+      port: 20010              # repeater -> gateway
       local_address: 127.0.0.1
-      local_port: 20011
+      local_port: 20011        # gateway -> repeater
       name: sx1255-multimode
+
   m17:
     enabled: true
     callsign: N0CALL
@@ -74,25 +90,25 @@ modes:
       port: 17000
       module: A
 
-# Síťový zdroj pro směr síť -> RF. "auto" znamená naposledy použitý lokální
-# mód; "dstar" umožní D-Star gateway i bez lokální D-STAR stanice.
+# Síťový zdroj pro směr síť -> RF:
+#   auto  = použije se naposledy použitý lokální mód
+#   dstar = vždy D-Star gateway
+#   m17   = vždy M17 reflektor
+#   fm    = vždy SVXLink
 network:
   mode: auto
 
-# Náhrada reálného rádia IQ souborem:
-#   frontend.type: replay   +   replay.file: capture.iq
-# Záznam reálného provozu při běhu na SX1255:
-#   recording.enabled: true
+# Záznam živého IQ do souboru.
 recording:
   enabled: false
   file: capture.iq
 
+# Přehrání IQ ze souboru místo reálného rádia.
 replay:
   enabled: false
   file: capture.iq
 
-# Diagnostika v prohlížeči (http://<ip>:8080/):
-#   spektrum, waterfall, RSSI, aktivní plugin, detekční metriky.
+# Diagnostika v prohlížeči: http://<ip>:8080/
 spectrum:
   enabled: true
   fft_size: 4096
@@ -100,7 +116,7 @@ spectrum:
   waterfall_rows: 500
   waterfall_bins: 256
 
-# Automatické uložení IQ záznamu (pre + post okno) při podezřelé události.
+# Automatické uložení IQ (pre + post okno) při podezřelé události.
 automatic_capture:
   enabled: false
   directory: /var/lib/sx1255-multimode
