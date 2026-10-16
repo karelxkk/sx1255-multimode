@@ -101,7 +101,7 @@ int main()
     const std::string plugins = httpGet(18081, "/api/plugins");
     if (plugins.find("\"name\":\"FM\"") == std::string::npos)
         return 6;
-    if (plugins.find("\"ctcss_rx_hz\"") == std::string::npos)
+    if (plugins.find("\"squelch_noise\"") == std::string::npos)
         return 7;
     if (plugins.find("\"sync_confidence\"") == std::string::npos)
         return 8;

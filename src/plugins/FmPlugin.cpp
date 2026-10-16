@@ -1,7 +1,6 @@
 #include "sx1255/plugins/PluginFactory.hpp"
 
 #include "sx1255/diag/SystemStatistics.hpp"
-#include "sx1255/dsp/Goertzel.hpp"
 #include "sx1255/fm/FMDsp.hpp"
 #include "sx1255/fm/FmSvxlinkBridge.hpp"
 #include "sx1255/fm/SqlPty.hpp"
@@ -22,7 +21,8 @@ namespace {
 // FmPlugin
 //
 // NFM repeater.  While monitoring, it FM-discriminates the shared IQ stream
-// and looks for the configured RX CTCSS tone (Goertzel).  Once a session is
+// and decides from the demodulated noise whether a carrier is present.
+// Once a session is
 // granted it becomes a full-duplex bridge:
 //
 //   RX IQ -> discriminator -> de-emphasis -> DC block
@@ -81,16 +81,26 @@ public:
         if (m_useSvxlink && m_bridge)
             m_bridge->pushRxIq(block.samples, block.count);
 
-        const double presence = ingest(block, false);
-        if (presence < 0.0) {
-            m_confirm = 0;
+        const double noise = ingest(block, false);
+        if (noise < 0.0) {
+            m_confirmSamples = 0;
             return {false, 0.0F};
         }
 
-        m_confirm = presence > kToneThreshold ? m_confirm + 1 : 0;
-        const bool detected = m_confirm >= kConfirmBlocks;
+        // Noise squelch: low ratio means a carrier is quieting the demodulator.
+        // The carrier must hold for a while before FM claims the channel: the
+        // digital modes detect the same carrier (any signal quiets the
+        // demodulator) and they have higher priority, so a too eager FM would
+        // steal e.g. a D-Star or M17 transmission before their detector
+        // confirms.  A time based hold keeps this independent of block size.
+        if (noise < m_config.squelchNoiseRatio) {
+            m_confirmSamples += static_cast<std::uint64_t>(block.count);
+        } else {
+            m_confirmSamples = 0;
+        }
+        const bool detected = m_confirmSamples >= kConfirmSamples;
         const float confidence = static_cast<float>(
-            std::clamp(presence / (2.0 * kToneThreshold), 0.0, 1.0));
+            std::clamp(1.0 - noise / (2.0 * m_config.squelchNoiseRatio), 0.0, 1.0));
 
         // Drive the SVXLink squelch from the local carrier even outside an FM
         // session, so a local station can key up during SVXLink's hang tail
@@ -134,15 +144,15 @@ public:
 
     bool process(const IQBlock& block) override
     {
-        const double presence = ingest(block, !m_useSvxlink);
+        const double noise = ingest(block, !m_useSvxlink);
 
         const auto now = std::chrono::steady_clock::now();
-        const bool carrier = presence >= 0.0 && presence > kToneThreshold;
+        const bool carrier = noise >= 0.0 && noise < m_config.squelchNoiseRatio;
 
         if (m_useSvxlink) {
-            // presence < 0 means the Goertzel window is still filling right
-            // after startSession; keep the session for that brief settle.
-            if (presence < 0.0) {
+            // A negative value means the window is still filling right after
+            // startSession; keep the session for that brief settle.
+            if (noise < 0.0) {
                 if (m_bridge)
                     m_bridge->pushRxIq(block.samples, block.count);
                 return true;
@@ -212,9 +222,9 @@ public:
     {
         PluginTelemetry t;
         t.mode = Mode::FM;
-        t.metrics["ctcss_rx_hz"] = m_config.ctcssRx;
         t.metrics["ctcss_tx_hz"] = m_config.ctcssTx;
-        t.metrics["ctcss_dev_hz"] = m_lastCtcssDev;
+        t.metrics["squelch_noise"] = m_lastSquelchNoise;
+        t.metrics["squelch_open"] = m_sqlOpen ? 1.0 : 0.0;
         t.metrics["confidence"] = m_lastConfidence;
         return t;
     }
@@ -281,8 +291,8 @@ private:
 
     // Feed one IQ block through the discriminator.  When tx is true, bridge
     // the audio into the TX chain and emit IQ via ITransmit.  Returns the
-    // CTCSS presence ratio over the most recent window, or -1 if not enough
-    // audio has accumulated yet.
+    // Noise-squelch ratio over the most recent window, or -1 if not enough
+    // audio has accumulated yet.  Low value = carrier present.
     double ingest(const IQBlock& block, bool tx)
     {
         std::vector<ComplexFloat> txIq;
@@ -302,7 +312,7 @@ private:
             }
         }
 
-        // Bounded history for the Goertzel window.
+        // Bounded history for the noise window.
         if (m_audio.size() > kWindow * 4)
             m_audio.erase(m_audio.begin(), m_audio.end() - kWindow * 2);
 
@@ -312,7 +322,7 @@ private:
         const auto begin = m_audio.end() - static_cast<std::ptrdiff_t>(kWindow);
 
         // Remove the discriminator DC component (carrier offset) so it cannot
-        // leak into the CTCSS Goertzel bin.
+        // leak into the noise measurement.
         double mean = 0.0;
         for (auto it = begin; it != m_audio.end(); ++it)
             mean += static_cast<double>(*it);
@@ -327,41 +337,39 @@ private:
             totalEnergy += v * v;
         }
 
-        const double tonePower = goertzelPower(centered.data(), kWindow,
-                                               m_config.ctcssRx, block.sampleRateHz);
-
-        // CTCSS level as deviation: the Goertzel magnitude of a sine of
-        // amplitude A over N samples is A*N/2, so A = 2*sqrt(power)/N; the
-        // discriminator output is radians per sample, hence the conversion.
-        // Spec for a 12.5 kHz NFM system: 175-375 Hz (-23 to -16.5 dB).
-        m_lastCtcssDev = 2.0 * std::sqrt(tonePower) / static_cast<double>(kWindow) *
-                         (kSampleRate / (2.0 * 3.14159265358979323846));
-        const auto nowTone = std::chrono::steady_clock::now();
-        if (m_lastCtcssDev > 50.0 &&
-            nowTone - m_lastToneLog > std::chrono::seconds(1)) {
-            m_lastToneLog = nowTone;
-            std::fprintf(stderr, "FM CTCSS: %.0f Hz deviation (%.1f dB rel. 2.5 kHz)\n",
-                         m_lastCtcssDev, 20.0 * std::log10(m_lastCtcssDev / 2500.0));
+        // Noise squelch: differentiate the window (a +6 dB/oct emphasis) and
+        // compare its energy with the total.  Noise fills the whole band, so
+        // the ratio is around 1.3; a carrier quiets the demodulator and the
+        // ratio collapses (0.05 measured on air).  Level independent.
+        double hfEnergy = 0.0;
+        for (std::size_t i = 1; i < centered.size(); ++i) {
+            const double d = static_cast<double>(centered[i]) - centered[i - 1];
+            hfEnergy += d * d;
+        }
+        m_lastSquelchNoise = totalEnergy > 1e-12 ? hfEnergy / totalEnergy : 1.0;
+        const auto nowNoise = std::chrono::steady_clock::now();
+        if (m_lastSquelchNoise < m_config.squelchNoiseRatio &&
+            nowNoise - m_lastNoiseLog > std::chrono::seconds(2)) {
+            m_lastNoiseLog = nowNoise;
+            std::fprintf(stderr, "FM squelch: carrier, noise ratio %.3f\n", m_lastSquelchNoise);
         }
 
         if (tx && m_tx && !txIq.empty())
             m_tx->writeIQ(txIq.data(), txIq.size());
 
-        return totalEnergy > 1e-12 ? tonePower / totalEnergy : 0.0;
+        return m_lastSquelchNoise;
     }
 
     static constexpr double      kSampleRate   = 125000.0;
     static constexpr std::size_t kWindow       = 4096;
-    // CTCSS gate.  Keep the original values: a stronger threshold made the
-    // squelch flap on air because real CTCSS levels hover around it.
-    // Deliberately slower than M17/D-Star: a false CTCSS blip on a digital
-    // signal must not grab the channel before the digital plugin wins.  The
-    // tone threshold stays low (50), so real CTCSS still opens reliably.
-    static constexpr std::size_t kConfirmBlocks = 10;
-    static constexpr double      kToneThreshold = 50.0;
-    // A single Goertzel window (16 ms at the dispatch block size) is far too
-    // short to decide the carrier is gone: real CTCSS levels hover right
-    // around the threshold and one weak block used to slam the squelch shut,
+    // FM is the fallback mode: hold the carrier this long (in samples, so the
+    // result does not depend on the dispatch block size) before claiming it.
+    // Digital modes win the arbitration when they confirm, and the dispatcher
+    // preempts a wrong FM owner once a higher-priority mode reports.
+    static constexpr std::uint64_t kConfirmSamples = 37500;   // 300 ms @125 kHz
+    // A single noise window (16 ms at the dispatch block size) is far too
+    // short to decide the carrier is gone: one noisy block used to slam the
+    // squelch shut,
     // which chopped the repeated audio and made SVXLink's tail sound like
     // digital garbage.  Require several consecutive weak blocks plus a short
     // grace period before closing, mirroring the confirmation used for open.
@@ -390,9 +398,9 @@ private:
     std::chrono::steady_clock::time_point m_carrierLostAt{};
     unsigned m_carrierLostBlocks = 0;
     float m_lastConfidence = 0.0F;
-    double m_lastCtcssDev = 0.0;
-    std::chrono::steady_clock::time_point m_lastToneLog{};
-    unsigned m_confirm = 0;
+    double m_lastSquelchNoise = 1.0;
+    std::chrono::steady_clock::time_point m_lastNoiseLog{};
+    std::uint64_t m_confirmSamples = 0;
     std::chrono::steady_clock::time_point m_hangStart{};
 };
 

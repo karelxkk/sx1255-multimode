@@ -88,15 +88,15 @@ public:
     // (EOT / carrier lost); the session manager will then release ownership.
     virtual bool process(const IQBlock& block) = 0;
 
-    // Keep the plugin's receive path alive while another plugin owns the
-    // session.  Modes that can receive data outside their own session (M17
-    // packet mode, which carries messages and not voice) override this so a
-    // packet is not lost while another mode holds the channel.  The default
-    // does nothing.
-    virtual void monitor(const IQBlock&) {}
-
     // Ownership is being released (normal end, timeout or shutdown).
     virtual void stopSession() = 0;
+
+    // The plugin lost arbitration in the monitoring phase: another mode was
+    // granted the channel.  Drop any pending RX state that would otherwise
+    // make a stale detection look like a fresh carrier (a D-Star detector that
+    // decoded a header but lost to M17, for example).  The default is a no-op
+    // because most modes have nothing to clear.
+    virtual void clearPendingDetection() {}
 
     // Live diagnostic counters/confidence values for the web dashboard.
     // The default implementation reports an empty telemetry block.

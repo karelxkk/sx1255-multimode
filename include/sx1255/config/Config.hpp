@@ -63,8 +63,13 @@ struct FmSvxlinkConfig {
 
 struct FmConfig {
     bool   enabled    = true;
-    double ctcssRx    = 88.5;   // CTCSS required to open a local RX session
     double ctcssTx    = 88.5;   // CTCSS regenerated on TX (0 disables)
+    // Carrier detection is done by noise, not by a CTCSS tone: without a
+    // carrier the FM discriminator output is noise with a rising spectrum, so
+    // the ratio of the differentiated to the total energy sits around 1.3,
+    // while a carrier quiets it (measured 0.05 on a real transmission).
+    // Below this ratio the squelch opens.
+    double squelchNoiseRatio = 0.5;
     int    hangTimeMs = 3000;   // local-repeat TX tail after carrier loss
     std::string backend = "local";  // "local" | "svxlink"
     FmSvxlinkConfig svxlink;

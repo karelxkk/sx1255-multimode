@@ -390,16 +390,6 @@ public:
         // them used to lose the packet frame that follows the LSF.
     }
 
-    // monitor keeps the M17 receive path alive while another plugin owns the
-    // session (FM, D-Star or their hang time).  Packet mode carries data that
-    // has nothing to do with the other session, so it must not be ignored.
-    void monitor(const IQBlock& block) override
-    {
-        if (!m_m17Config.decodeDuringOtherSessions)
-            return;
-        feed(block);
-    }
-
     bool process(const IQBlock& block) override
     {
         feed(block);

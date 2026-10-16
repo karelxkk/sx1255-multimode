@@ -81,18 +81,22 @@ void DStarPlugin::setTxArbiter(ITxArbiter* arbiter)
 
 Detection DStarPlugin::detect(const IQBlock& block)
 {
-    // If an earlier header lost arbitration to a higher-priority mode, the
-    // detector is still following that old DV stream.  Drop it and start a
-    // clean monitoring pass; a partial (not yet validated) header is left
-    // untouched because inData() is only true after a complete, valid header.
-    if (m_detector.inData())
-        m_detector.reset();
-
     const Detection d = m_detector.detect(block);
-    m_lastConfidence = d.detected ? 1.0F : 0.0F;
+    // Once a header has been validated the detector stays in the DV stream.
+    // Treat that follow state as a persistent detection: the dispatcher uses
+    // repeated detection to debounce a hand-over from a wrong FM owner, and
+    // after the session is dropped this is also what lets D-Star win the next
+    // monitoring pass without having to decode a second header.
+    const bool detected = d.detected || m_detector.inData();
+    m_lastConfidence = detected ? 1.0F : 0.0F;
     if (d.detected && m_stats)
         m_stats->recordDetection(Mode::DStar);
-    return d;
+    return {detected, detected ? 1.0F : 0.0F};
+}
+
+void DStarPlugin::clearPendingDetection()
+{
+    m_detector.reset();
 }
 
 void DStarPlugin::startSession(const SessionContext& ctx)

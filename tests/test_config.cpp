@@ -77,7 +77,7 @@ int main()
         return 4;
     if (!config.fm.enabled)
         return 5;
-    if (config.fm.ctcssRx < 88.4 || config.fm.ctcssRx > 88.6)
+    if (config.fm.squelchNoiseRatio < 0.4 || config.fm.squelchNoiseRatio > 0.6)
         return 6;
     if (config.dstar.enabled)
         return 7;

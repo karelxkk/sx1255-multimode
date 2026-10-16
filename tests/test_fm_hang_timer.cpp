@@ -13,7 +13,6 @@ int main()
 {
     FmConfig config;
     config.enabled = true;
-    config.ctcssRx = 88.5;
     config.ctcssTx = 88.5;
     config.hangTimeMs = 120;
 

@@ -35,14 +35,13 @@ int main()
 {
     FmConfig fmConfig;
     fmConfig.enabled = true;
-    fmConfig.ctcssRx = 88.5;
     fmConfig.ctcssTx = 88.5;
     fmConfig.hangTimeMs = 100;
 
     // Valid CTCSS: FM-modulated 88.5 Hz tone, debounced over several blocks.
     {
         auto fm = createFmPlugin(fmConfig);
-        auto iq = fmModulated(88.5, 500.0, 32768);
+        auto iq = fmModulated(88.5, 500.0, 65536);
         bool detected = false;
         for (std::size_t off = 0; off < iq.size(); off += 2048) {
             const IQBlock block{0, iq.data() + off,

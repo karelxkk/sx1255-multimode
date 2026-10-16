@@ -42,8 +42,9 @@ Depends: libc6 (>= 2.34), libgcc-s1, libstdc++6, libasound2t64 | libasound2, sys
 Description: multimode SX1255 radio framework (FM/D-Star/M17)
  sx1255-multimode is a modular hotspot/repeater framework for the SX1255 HAT
  on Raspberry Pi Zero 2 W. One RF frontend, one shared IQ stream, and FM
- (CTCSS), D-Star and M17 as independent plugins, plus spectrum/waterfall web
- dashboard, IQ capture/replay, watchdog and automatic capture.
+ (noise squelch), D-Star and M17 as independent plugins, plus
+ spectrum/waterfall web dashboard, IQ capture/replay, watchdog and automatic
+ capture.
 EOF
 
 dpkg-deb --build --root-owner-group "$STAGE" "$OUT"

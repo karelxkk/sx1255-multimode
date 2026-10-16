@@ -48,15 +48,32 @@ void IQDispatcher::dispatch(const IQBlock& block)
                     plugin->detect(block);
             return;
         }
+        // The plugins that do not own the session keep monitoring it.  Running
+        // their detect() keeps the receive path alive (an M17 packet must not be
+        // lost because another mode holds the channel) and it gives the
+        // arbitration a way out of a wrong owner: a noise-squelch FM detector
+        // cannot tell an analogue voice carrier from a digital one, so a mode
+        // with a higher priority that reports a carrier takes the channel over.
+        // Dropping the session is enough; the next block grants it to the
+        // winner again.
+        bool higherWants = false;
+        for (const auto& plugin : m_registry.plugins()) {
+            if (!plugin || plugin == owner)
+                continue;
+            const Detection d = plugin->detect(block);
+            if (d.detected && plugin->priority() > owner->priority())
+                higherWants = true;
+        }
+        // The hand-over needs a confirmed detection: a single block of a stray
+        // correlation from a digital detector must not cut an analogue session.
+        m_preemptBlocks = higherWants ? m_preemptBlocks + 1 : 0;
+        if (m_preemptBlocks >= kPreemptBlocks) {
+            m_preemptBlocks = 0;
+            m_sessions.finishSession();
+            return;
+        }
         if (!owner->process(block))
             m_sessions.finishSession();
-        // The plugins that do not own the session keep monitoring it: M17
-        // packet mode must not lose a packet because another mode (FM, D-Star
-        // or their hang time) currently holds the channel.
-        for (const auto& plugin : m_registry.plugins()) {
-            if (plugin && plugin != owner)
-                plugin->monitor(block);
-        }
         return;
     }
 
@@ -70,7 +87,13 @@ void IQDispatcher::dispatch(const IQBlock& block)
         reports.push_back({plugin, plugin->detect(block)});
     }
 
-    m_sessions.evaluateDetections(reports, m_tx);
+    IModePlugin* owner = m_sessions.evaluateDetections(reports, m_tx);
+    if (owner) {
+        for (const auto& plugin : m_registry.plugins()) {
+            if (plugin && plugin.get() != owner)
+                plugin->clearPendingDetection();
+        }
+    }
 }
 
 std::uint64_t IQDispatcher::blocksProcessed() const

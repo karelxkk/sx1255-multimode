@@ -150,7 +150,8 @@ cd build && ninja && ctest -R m17 --output-on-failure
 - `m17_packet_pipeline` – celý řetězec IQ → plugin → síť po malých blocích
   (přesně situace, kdy se dřív ztrácel rámec po LSF); přes UDP se ověří, že do
   bridge dorazí packet se správným textem.
-- `dispatcher` – ověřuje, že plugin, který nevlastní relaci, dostává `monitor()`.
+- `dispatcher` – ověřuje, že plugin, který nevlastní relaci, dál dostává IQ
+  přes `detect()` (M17 packet tak nepřijde o rámec, když kanál drží jiný mód).
 - `session_manager` – ověřuje, že packet projde i když je síťový mód jiný
   (`acquireTxPacket` vs. `acquireTx`).
 

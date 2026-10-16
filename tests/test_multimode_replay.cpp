@@ -72,12 +72,11 @@ void writeFile(const std::string& path, const std::vector<ComplexFloat>& iq,
 // ---------------------------------------------------------------------------
 // FM + CTCSS: FM-modulated 88.5 Hz sub-audio tone.
 // ---------------------------------------------------------------------------
-std::vector<ComplexFloat> fmIq()
+std::vector<ComplexFloat> fmIq(std::size_t count = 32768)
 {
-    constexpr std::size_t kCount = 32768;
-    std::vector<ComplexFloat> iq(kCount);
+    std::vector<ComplexFloat> iq(count);
     double phase = 0.0;
-    for (std::size_t n = 0; n < kCount; ++n) {
+    for (std::size_t n = 0; n < count; ++n) {
         const double t = static_cast<double>(n) / kSampleRate;
         const double freq = 500.0 * std::sin(2.0 * kPi * 88.5 * t);
         phase += 2.0 * kPi * freq / kSampleRate;
@@ -116,7 +115,11 @@ std::vector<bool> dstarHeaderBits()
     bytes.push_back(0xEA);
     bytes.push_back(0xA6);
     bytes.insert(bytes.end(), fec.begin(), fec.end());
-    for (int i = 0; i < 50; ++i) bytes.push_back(0x55);
+    // Keep the DV stream alive long enough for the higher-priority D-Star
+    // detector to confirm after the header and preempt an FM noise-squelch
+    // claim, but shorter than the detector's 1 s data-sync timeout so the
+    // session is still ActiveDStar when the replay reaches EOF.
+    for (int i = 0; i < 120; ++i) bytes.push_back(0x55);
     return byteToBits(bytes);
 }
 
@@ -220,17 +223,26 @@ int main()
     const std::string dstarFile = tempFile("dstar");
     const std::string m17File   = tempFile("m17");
 
-    writeFile(fmFile, toLowIf(fmIq(), 25000.0), 430950000);
+    // FM needs 300 ms of carrier before it claims the channel (digital modes
+    // must win when they are on the air); generate one continuous fixture so
+    // the noise-squelch confirmation window never crosses a phase jump.
+    std::vector<ComplexFloat> fmLong = fmIq(131072);
+    writeFile(fmFile, toLowIf(fmLong, 25000.0), 430950000);
     writeFile(dstarFile, toLowIf(dstarIq(), 25000.0), 430950000);
     writeFile(m17File, toLowIf(m17Iq(), 25000.0), 430950000);
 
     const auto fmState = runReplay(fmFile);
-    if (fmState != SessionManager::State::ActiveFm)
+    if (fmState != SessionManager::State::ActiveFm) {
+        std::printf("FM replay state: %s\n", SessionManager::toString(fmState));
         return 1;
+    }
 
     const auto dstarState = runReplay(dstarFile);
-    if (dstarState != SessionManager::State::ActiveDStar)
+    if (dstarState != SessionManager::State::ActiveDStar) {
+        std::printf("dstar replay state: %s\n",
+                    SessionManager::toString(dstarState));
         return 2;
+    }
 
     const auto m17State = runReplay(m17File);
     if (m17State != SessionManager::State::ActiveM17)

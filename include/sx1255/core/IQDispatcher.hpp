@@ -44,6 +44,12 @@ private:
     SessionManager& m_sessions;
     ITransmit*      m_tx;
     std::function<void(const ComplexFloat*, std::size_t)> m_iqSink;
+
+    // Consecutive blocks a higher priority mode has to report a carrier before
+    // the current owner is told to let go (~82 ms at the default 2048-sample
+    // block, ~164 ms at 4096 samples).
+    static constexpr int kPreemptBlocks = 5;
+    int m_preemptBlocks = 0;
     std::uint64_t   m_blocks = 0;
 };
 

@@ -256,15 +256,13 @@ Config loadConfig(const std::string& path)
 
     const YamlNode* fm = child(*modes, "fm");
     config.fm.enabled = asBool(*fm, "enabled");
-    if (fm->map.count("ctcss_rx"))
-        config.fm.ctcssRx = asDouble(*fm, "ctcss_rx");
     if (fm->map.count("ctcss_tx"))
         config.fm.ctcssTx = asDouble(*fm, "ctcss_tx");
+    if (fm->map.count("squelch_noise_ratio"))
+        config.fm.squelchNoiseRatio = asDouble(*fm, "squelch_noise_ratio");
     if (fm->map.count("ctcss")) {
         // Backwards-compatible alias: one tone for both RX and TX.
         const double ctcss = asDouble(*fm, "ctcss");
-        if (!fm->map.count("ctcss_rx"))
-            config.fm.ctcssRx = ctcss;
         if (!fm->map.count("ctcss_tx"))
             config.fm.ctcssTx = ctcss;
     }
@@ -426,8 +424,8 @@ std::string serializeConfig(const Config& config)
     out << "modes:\n";
     out << "  fm:\n";
     out << "    enabled: " << (config.fm.enabled ? "true" : "false") << '\n';
-    out << "    ctcss_rx: " << formatDouble(config.fm.ctcssRx) << '\n';
     out << "    ctcss_tx: " << formatDouble(config.fm.ctcssTx) << '\n';
+    out << "    squelch_noise_ratio: " << formatDouble(config.fm.squelchNoiseRatio) << '\n';
     out << "    hang_time_ms: " << config.fm.hangTimeMs << '\n';
     out << "    backend: " << config.fm.backend << '\n';
     out << "    svxlink:\n";

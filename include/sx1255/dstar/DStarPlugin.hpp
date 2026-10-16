@@ -41,6 +41,7 @@ public:
     void startSession(const SessionContext& ctx) override;
     bool process(const IQBlock& block) override;
     void stopSession() override;
+    void clearPendingDetection() override;
     PluginTelemetry telemetry() const override;
     unsigned int gatewayBoundPort() const;
 

@@ -14,7 +14,6 @@ public:
         int starts = 0;
         int processes = 0;
         int stops = 0;
-        int monitors = 0;
     };
 
     using Detector = std::function<Detection(const IQBlock&)>;
@@ -48,8 +47,6 @@ public:
         ++log.processes;
         return processResult;
     }
-
-    void monitor(const IQBlock&) override { ++log.monitors; }
 
     void stopSession() override
     {

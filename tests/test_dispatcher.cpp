@@ -41,19 +41,44 @@ int main()
     if (fmDetections != 1)
         return 3;
 
-    // Second block: exclusive phase, only M17 processes, no more detection.
+    // Second block: exclusive phase.  M17 processes and the other plugins keep
+    // detecting: that keeps their receive path alive and lets a mode with a
+    // higher priority take the channel over from a wrong owner.
     dispatcher.dispatch(block);
     if (m17->log.processes != 1)
         return 4;
-    if (fmDetections != 1)
+    if (fmDetections != 2)
         return 5;
-    // The plugin that does not own the session still monitors the channel, so
-    // a mode that carries data (M17 packet mode) cannot lose a packet while
-    // another mode holds the session.
-    if (fm->log.monitors != 1)
-        return 8;
-    if (m17->log.monitors != 0)
-        return 9;
+
+    // A higher priority detection takes the session away from the owner.
+    {
+        auto low = std::make_shared<test::MockPlugin>(
+            "low", Mode::FM, 10, [](const IQBlock&) { return Detection{true, 0.9F}; });
+        bool highOnAir = false;
+        auto high = std::make_shared<test::MockPlugin>(
+            "high", Mode::M17, 30,
+            [&highOnAir](const IQBlock&) { return Detection{highOnAir, 0.9F}; });
+        PluginRegistry reg2;
+        reg2.registerPlugin(low);
+        reg2.registerPlugin(high);
+        SessionManager s2(SessionManager::Settings{120000ms, 0ms});
+        s2.start();
+        IQDispatcher d2(reg2, s2, nullptr);
+        d2.dispatch(block);                       // only FM is on the air
+        if (s2.state() != SessionManager::State::ActiveFm)
+            return 8;
+        highOnAir = true;
+        // Preemption is deliberately debounced: one stray higher-priority
+        // detection must not cut an FM session, so the dispatcher requires
+        // five consecutive confirming blocks before it drops the owner.
+        for (int i = 0; i < 5; ++i)
+            d2.dispatch(block);
+        if (s2.state() != SessionManager::State::ReturnToIdle)
+            return 9;
+        d2.dispatch(block);                       // next block grants it to high
+        if (s2.state() != SessionManager::State::ActiveM17 || s2.owner() != high)
+            return 10;
+    }
 
     // Third block: M17 reports end of session.
     m17->processResult = false;
