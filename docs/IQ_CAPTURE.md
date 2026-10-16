@@ -142,6 +142,6 @@ vzorků v souboru.
 - `test_iq_replay` — čtení ve více dávkách, shoda vzorků, `eof()`, chování po
   konci souboru.
 - `test_multimode_replay` — plná smyčka `IQReplay → RadioFrontend →
-  IQDispatcher → pluginy` pro FM+CTCSS, D-Star a M17; ověřuje, že vznikne
+  IQDispatcher → pluginy` pro FM (šumová squelch), D-Star a M17; ověřuje, že vznikne
   `ACTIVE_FM`, `ACTIVE_DSTAR` a `ACTIVE_M17`.
 - `test_runtime_stats` — JSON výstup `GET /api/iq`.

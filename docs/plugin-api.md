@@ -38,8 +38,9 @@ Vyšší hodnota vítězí; shoda se řeší stabilním pořadím registrace.
 
 ## Detekce
 
-- FM — NFM diskriminátor + Goertzel na CTCSS tónu. FM detekuje jen při platném
-  CTCSS.
+- FM — NFM diskriminátor + šumová squelch (poměr diferencované a celkové
+  energie výstupu diskriminátoru). FM detekuje každou nosnou, která utiší
+  šum; od digitálních módů ho odděluje arbitráž podle priority.
 - D-Star — GMSK demod + korelace frame sync `0x55 0x55 0x6E 0x0A`, validace
   FEC hlavičky a sledování DV rámců až po EOT; po přidělení relace re-moduluje
   přijatá data zpět na TX (lokální převaděč).

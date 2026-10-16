@@ -97,7 +97,8 @@ do ALSA. Díky odděleným vláknům RX běží i během TX (plný duplex).
   vyžaduje měření. Na tomto HW je naměřené minimum přibližně **-60**
   (relativní dBFS); zvýšení LNA z 24 na 42 dB v testu hodnotu nezměnilo.
   RSSI squelch zatím není implementovaný, proto se `squelch` v ukázkové
-  konfiguraci neuvádí; FM plugin otevírá squelch podle CTCSS, ne podle RSSI.
+  konfiguraci neuvádí; FM plugin otevírá squelch šumovou detekcí nosné, ne
+  podle RSSI.
 
 ## Diagnostika
 

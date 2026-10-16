@@ -8,27 +8,26 @@ SVXLink Tx1 -> snd-aloop 16 kHz -> pre-emfáze -> FM modulátor -> RF TX IQ
 SVXLink PTT (PTY 'T'/'R') -> sx1255-multimode -> SX1255 TX/PTT
 ```
 
-SVXLink dělá veškerou logiku: squelch, CTCSS, hang time, identifikaci a
-ReflectorLogic (připojení do sítě SvxLink). Žádný `svx_ptt_bridge` proces není
-potřeba — PTT jde přímo přes PTY.
+SVXLink dělá logiku převaděče (hang time, identifikaci, ReflectorLogic a
+připojení do sítě SvxLink); nosnou detekuje multimode šumově. Žádný
+`svx_ptt_bridge` proces není potřeba — PTT i squelch jdou přímo přes PTY.
 
 ## Jak se otevírá SQL (squelch)
 
-Otevírá ho **sám SVXLink** ze sub-tónu CTCSS v bridgovaném audiu:
+Squelch otevírá **multimode** šumovou detekcí nosné:
 
 ```text
-FM + CTCSS 88,5 Hz
-  -> multimode FM plugin detekuje CTCSS -> ACTIVE_FM -> spustí audio bridge
-  -> snd-aloop: RX audio (i s 88,5 Hz) teče do SVXLink Rx1
-  -> SVXLink [Rx1] SQL_DET=CTCSS otevře SQL
+FM nosná (klidně i bez subtónu)
+  -> multimode FM plugin změří poměr šumu z diskriminátoru (squelch_noise_ratio)
+  -> nosná utiší diskriminátor -> SQL PTY 'O'
+  -> snd-aloop: RX audio teče do SVXLink Rx1
+  -> SVXLink [Rx1] SQL_DET=PTY otevře SQL
   -> RepeaterLogic klíčuje Tx1 -> PTT 'T' na PTY -> multimode klíčuje SX1255
 ```
 
-CTCSS se tedy vyhodnocuje dvakrát (multimode pro módovou arbitráž + SVXLink
-pro squelch). Pokus o jednorázové vyhodnocení s externím squelchem přes PTY
-(`SQL_DET=SERIAL`, čtení CTS) **nefunguje** — Linux PTY neimplementuje
-modem-control linky (`TIOCMGET` → `ENOTTY`). Pro „jedno CTCSS" je nutný volný
-GPIO pin a `SQL_DET=GPIOD` v SVXLinku.
+CTCSS se na RX už nevyhodnocuje: multimode detekuje pouze nosnou a SVXLink
+čte stav squelche z PTY (`SQL_DET=PTY`, `PTY_PATH=/run/svxlink/sql`). Proto
+na RX funguje i stanice bez subtónu. CTCSS na TX zůstává volitelné, viz níže.
 
 ## CTCSS na TX
 

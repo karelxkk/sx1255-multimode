@@ -73,11 +73,11 @@ digitální implementací s předností.
 
 ### FM je poslední
 
-FM detekce je z principu „nejměkčí“: aktivuje se pouze při platném CTCSS tónu
-(Goertzel nad diskriminátorem). CTCSS ale může být přítomen i jako součást
-jiného provozu nebo rušení, proto FM nesmí přebíjet digitální detekce. FM je
-proto záchytná síť, která se uplatní, jen když žádný digitální režim
-nedetekuje.
+FM detekce je z principu „nejměkčí“: aktivuje se na jakoukoli nosnou, která
+utlumí šum na výstupu diskriminátoru (`squelch_noise_ratio`). Protože digitální
+provoz je také nosná, FM nesmí přebíjet digitální detekce. FM je záchytná síť,
+která se uplatní, jen když žádný digitální režim nedetekuje; pokud FM kanál
+získá dřív, vyšší priorita digitálního režimu ho po potvrzení převezme.
 
 ## Současná aktivita
 
@@ -87,12 +87,13 @@ prioritou:
 ```text
 M17 sync nalezen          → ACTIVE_M17
 M17 nenalezen, D-Star ano → ACTIVE_DSTAR
-nic digitálního, CTCSS ok → ACTIVE_FM
+nic digitálního, nosná utiší šum → ACTIVE_FM
 ```
 
-Jakmile relace začne, `SessionManager` ignoruje detekce ostatních pluginů
-(nepřepíná se uprostřed relace) a překvapivé pozitivní detekce počítá do
-čítače `false_positives` runtime diagnostiky.
+Jakmile relace začne, ostatní pluginy dál dostávají IQ (aby se neztratil
+packet) a `IQDispatcher` sleduje jejich detekci. Když mód s vyšší prioritou
+hlásí nosnou dostatečně dlouho (5 bloků), aktuální vlastník relaci uvolní a
+příští blok ji předá vítězi.
 
 ## Ověření
 
@@ -108,7 +109,7 @@ Unit testy pokrývají každou vrstvu zvlášť:
   falešnému gateway procesu.
 - `test_dstar_netplugin` — síť → RF: DSRP gateway → plugin → falešný
   `ITransmit`/arbiter.
-- `test_fm_detect` — CTCSS detekce přes Goertzel.
+- `test_fm_detect` — šumová squelch FM nosné.
 - `test_m17_loopback` — M17 TX → RX dekóduje identický LSF.
 - `test_session_manager` — priority a přechody stavů.
 - `test_runtime_stats` — čítače detekcí/relací a JSON výstupy HTTP serveru.
