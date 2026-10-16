@@ -192,6 +192,7 @@ void M17Synchronizer::push(float sample)
 
     float dist = candidates[best].distance;
     std::uint16_t typ = 0;
+    m_lastKind = Kind::Blind;
     if (dist < candidates[best].limit)
         typ = candidates[best].type;
 
@@ -208,6 +209,7 @@ void M17Synchronizer::push(float sample)
         typ = PacketSync;
         dist = metrics.packetOnly;
         m_lastFollow = true;
+        m_lastKind = Kind::Follow;
     }
 
     // A header whose preamble was not repeated: the LSF sync word alone decides.
@@ -216,6 +218,7 @@ void M17Synchronizer::push(float sample)
     if (typ == 0 && metrics.lsfOnly < m_thresholds.lsfSync) {
         typ = LSFSync;
         dist = metrics.lsfOnly;
+        m_lastKind = Kind::SyncOnly;
     }
 
     if (typ == 0) {

@@ -58,6 +58,11 @@ class M17Synchronizer {
 public:
     using FrameSink = std::function<void(std::uint16_t typ, const std::vector<SoftBit>& softBits)>;
 
+    // How the last burst was recognised: by the classic best-of-six search, by
+    // the sync word of a frame inside a running transmission, or by a header's
+    // sync word alone (a retry that does not repeat the preamble).
+    enum class Kind { Blind, Follow, SyncOnly };
+
     M17Synchronizer(int sps, FrameSink sink, SyncThresholds thresholds = {});
 
     void push(float sample);
@@ -86,6 +91,7 @@ public:
     // True when the last burst was recognized by its sync word alone, because
     // the receiver already knew a packet transmission was running.
     bool lastFollow() const { return m_lastFollow; }
+    Kind lastKind() const { return m_lastKind; }
     // Number of samples pushed since start; the difference between two bursts
     // is their spacing in samples (diagnostics).
     std::uint64_t samples() const { return m_samples; }
@@ -104,6 +110,7 @@ private:
     float m_lastDistance = 0.0F;
     SyncMetrics m_lastMetrics{};
     bool m_lastFollow = false;
+    Kind m_lastKind = Kind::Blind;
     std::uint64_t m_samples = 0;
     std::vector<Symbol> m_extracted;   // payload samples of the last burst
     bool m_canRetract = false;

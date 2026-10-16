@@ -71,6 +71,8 @@ public:
               // so a short packet is never lost because it did not raise the
               // burst count.
               const std::uint16_t syncedBefore = m_decoder.syncedType();
+              m_lsfWasSyncOnly =
+                  m_synchronizer.lastKind() == m17::M17Synchronizer::Kind::SyncOnly;
               m_decoder.decodeFrame(typ, softBits);
               const bool useful = m_lsfDecoded || syncedBefore != 0 ||
                                   m_decoder.syncedType() != 0;
@@ -175,11 +177,18 @@ public:
                                payload.size(), ber, forwarded ? "forwarded" : "NOT forwarded");
               },
               [this](const m17::LSF& lsf, double ber) {   // onLSFBadCRC
-                  ++m_lsfBadCrc;
+                  // A header recognised by its sync word alone matches in data
+                  // regions many times per second; count those apart so the CRC
+                  // counter still means "a real header failed".
+                  if (m_lsfWasSyncOnly)
+                      ++m_lsfSyncRejects;
+                  else
+                      ++m_lsfBadCrc;
                   m_lsfRejected = true;
-                  logDiag(m_diagLsf, "LSF CRC fail",
-                          lsf.dstCallsign() + ">" + lsf.srcCallsign() +
-                              " ber=" + std::to_string(ber));
+                  if (!m_lsfWasSyncOnly)
+                      logDiag(m_diagLsf, "LSF CRC fail",
+                              lsf.dstCallsign() + ">" + lsf.srcCallsign() +
+                                  " ber=" + std::to_string(ber));
               },
               [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload, double ber) {  // onPacketBadCRC
                   ++m_rfPacketsBadCrc;
@@ -429,6 +438,7 @@ public:
         // when something was, why.
         const m17::Decoder::Counters counters = m_decoder.counters();
         t.metrics["lsf_bad_crc"] = static_cast<double>(m_lsfBadCrc);
+        t.metrics["lsf_sync_rejects"] = static_cast<double>(m_lsfSyncRejects);
         t.metrics["resync_count"] = static_cast<double>(counters.resync);
         t.metrics["packet_frames"] = static_cast<double>(counters.packetFrames);
         t.metrics["packets_rx"] = static_cast<double>(counters.packets);
@@ -811,6 +821,8 @@ private:
     DiagState m_diagFrame;
     DiagState m_diagSync;
     bool m_lsfRejected = false;
+    bool m_lsfWasSyncOnly = false;
+    std::uint64_t m_lsfSyncRejects = 0;
     double m_syncConfidence = 0.0;
     int m_syncBurst = 0;
     std::chrono::steady_clock::time_point m_syncBurstStart{};
