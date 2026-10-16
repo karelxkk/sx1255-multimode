@@ -11,6 +11,8 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 - M17 plugin přeposílá packet rámce z RF do M17 inet klienta a naopak je
   vysílá na RF; tím funguje bridge na `m17-bridge` APRS modul pro SMS zprávy
   a GNSS polohu.
+- M17 plugin má druhé nezávislé inet připojení `m17.bridge`, takže hlasový
+  `m17.reflector` (mrefd) a APRS/messaging `m17-bridge` mohou běžet současně.
 - Unit test `m17_packet_loopback` (packet TX → RX dekóduje stejný payload).
 
 ### Opraveno

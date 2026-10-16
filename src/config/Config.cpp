@@ -311,6 +311,14 @@ Config loadConfig(const std::string& path)
     const YamlNode* m17 = child(*modes, "m17");
     config.m17.enabled = asBool(*m17, "enabled");
     config.m17.callsign = optString(*m17, "callsign", config.m17.callsign);
+    if (hasKey(*m17, "bridge")) {
+        const YamlNode* bridge = child(*m17, "bridge");
+        config.m17.bridge.enabled  = optBool(*bridge, "enabled", false);
+        config.m17.bridge.host     = optString(*bridge, "host", config.m17.bridge.host);
+        config.m17.bridge.port     = static_cast<int>(optInt(*bridge, "port", config.m17.bridge.port));
+        config.m17.bridge.module   = optString(*bridge, "module", config.m17.bridge.module);
+        config.m17.bridge.callsign = optString(*bridge, "callsign", config.m17.bridge.callsign);
+    }
     if (hasKey(*m17, "reflector")) {
         const YamlNode* reflector = child(*m17, "reflector");
         config.m17.reflector.enabled = optBool(*reflector, "enabled", false);
@@ -435,6 +443,12 @@ std::string serializeConfig(const Config& config)
     out << "  m17:\n";
     out << "    enabled: " << (config.m17.enabled ? "true" : "false") << '\n';
     out << "    callsign: " << config.m17.callsign << '\n';
+    out << "    bridge:\n";
+    out << "      enabled: " << (config.m17.bridge.enabled ? "true" : "false") << '\n';
+    out << "      host: " << config.m17.bridge.host << '\n';
+    out << "      port: " << config.m17.bridge.port << '\n';
+    out << "      module: " << config.m17.bridge.module << '\n';
+    out << "      callsign: " << config.m17.bridge.callsign << '\n';
     out << "    reflector:\n";
     out << "      enabled: " << (config.m17.reflector.enabled ? "true" : "false") << '\n';
     out << "      host: " << config.m17.reflector.host << '\n';

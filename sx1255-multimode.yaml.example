@@ -90,6 +90,11 @@ modes:
   m17:
     enabled: true             # zapnout M17 plugin
     callsign: N0CALL
+    bridge:
+      enabled: false          # m17-bridge pro APRS zprávy a polohu
+      host: 127.0.0.1         # kde běží m17-bridge
+      port: 17000             # UDP port m17-bridge
+      module: A               # modul s APRS bridge
     reflector:
       enabled: false           # připojit se k M17 reflektor
       # Pro M17 bridge (APRS zprávy a poloha) nasměruj host/port/module

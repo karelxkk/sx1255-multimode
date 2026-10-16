@@ -9,18 +9,23 @@ M17 plugin umí přenášet packet mode oběma směry. Díky tomu se dá napojit
 
 ## Zapojení
 
-V multimode se použije stávající M17 inet klient a nastaví se na `m17-bridge`
-místo hlasového reflektoru:
+V multimode se přidá druhé M17 inet připojení pro `m17-bridge`; hlasový
+reflektor (`m17.reflector`) může zůstat zapnutý současně:
 
 ```yaml
 m17:
   enabled: true
   callsign: OK1LBC
-  reflector:
+  bridge:
     enabled: true
     host: 127.0.0.1     # kde běží m17-bridge
     port: 17000
     module: A           # modul, na kterém je v m17-bridge APRS module
+  reflector:
+    enabled: true
+    host: mrefd.example.org
+    port: 17000
+    module: B
 ```
 
 Na straně `m17-bridge` musí být zapnutý APRS modul a připojení na APRS-IS
@@ -40,9 +45,6 @@ APRS-IS --> m17-bridge -- M17 packet/stream --> multimode --> RF
 
 ## Omezení
 
-- M17 plugin má jednu konfiguraci `m17.reflector`; nelze současně poslouchat
-  hlasový reflektor a APRS bridge na dvou různých serverech. Pro souběh by
-  bylo potřeba přidat druhý M17 inet klient.
 - `m17-bridge` APRS modul zpracovává M17 SMS a GNSS, ne obecné AX.25/FlexNet
   rámce.
 

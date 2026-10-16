@@ -86,15 +86,27 @@ public:
               },
               [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload, double) {  // onPacket
                   m_lastActivity = std::chrono::steady_clock::now();
-                  if (!m_reflector)
-                      return;
                   std::vector<std::uint8_t> packetBytes = lsf.toBytes();
                   packetBytes.insert(packetBytes.end(), payload.begin(), payload.end());
-                  m_reflector->sendPacket(packetBytes);
+                  if (m_reflector)
+                      m_reflector->sendPacket(packetBytes);
+                  if (m_bridge)
+                      m_bridge->sendPacket(packetBytes);
               }})
         , m_m17Config(std::move(config))
         , m_stats(stats)
     {
+        auto streamHandler = [this](const m17::StreamDatagram& dg) {
+            {
+                std::lock_guard<std::mutex> lock(m_queueMutex);
+                m_txQueue.push_back(dg);
+            }
+            m_txCv.notify_one();
+        };
+        auto packetHandler = [this](const std::vector<std::uint8_t>& packet) {
+            processNetworkPacket(packet);
+        };
+
         if (m_m17Config.reflector.enabled && !m_m17Config.reflector.host.empty()) {
             m17::M17ReflectorClient::Config net;
             net.host     = m_m17Config.reflector.host;
@@ -104,17 +116,28 @@ public:
             m_reflector = std::make_unique<m17::M17ReflectorClient>(
                 net,
                 [this](m17::ReflectorState state) { m_reflectorState = state; },
-                [this](const m17::StreamDatagram& dg) {
-                    {
-                        std::lock_guard<std::mutex> lock(m_queueMutex);
-                        m_txQueue.push_back(dg);
-                    }
-                    m_txCv.notify_one();
-                },
-                [this](const std::vector<std::uint8_t>& packet) {
-                    processNetworkPacket(packet);
-                });
+                streamHandler,
+                packetHandler);
             m_reflector->start();
+        }
+
+        if (m_m17Config.bridge.enabled && !m_m17Config.bridge.host.empty()) {
+            m17::M17ReflectorClient::Config net;
+            net.host     = m_m17Config.bridge.host;
+            net.port     = m_m17Config.bridge.port;
+            net.module   = m_m17Config.bridge.module;
+            net.callsign = m_m17Config.bridge.callsign.empty()
+                ? m_m17Config.callsign
+                : m_m17Config.bridge.callsign;
+            m_bridge = std::make_unique<m17::M17ReflectorClient>(
+                net,
+                [this](m17::ReflectorState state) { m_bridgeState = state; },
+                streamHandler,
+                packetHandler);
+            m_bridge->start();
+        }
+
+        if (m_reflector || m_bridge) {
             m_networkTxThread = std::thread([this] {
                 for (;;) {
                     m17::StreamDatagram dg;
@@ -243,6 +266,14 @@ public:
             t.metrics["reflector_rx_packets"] = static_cast<double>(net.rxStreams);
             t.metrics["reflector_tx_packets"] = static_cast<double>(net.txStreams);
             t.strings["reflector_state"] = m17::toString(net.state);
+        }
+        if (m_bridge) {
+            const auto net = m_bridge->telemetry();
+            t.strings["bridge_host"] = net.host;
+            t.metrics["bridge_connected"] = net.connected ? 1.0 : 0.0;
+            t.metrics["bridge_rx_packets"] = static_cast<double>(net.rxPackets);
+            t.metrics["bridge_tx_packets"] = static_cast<double>(net.txPackets);
+            t.strings["bridge_state"] = m17::toString(m_bridgeState.load());
         }
         return t;
     }
@@ -406,7 +437,7 @@ private:
     void forwardStream(const m17::LSF& lsf, std::uint16_t sid, std::uint16_t fn,
                        const std::vector<std::uint8_t>& payload, bool lastFrame)
     {
-        if (!m_reflector)
+        if (!m_reflector && !m_bridge)
             return;
         m17::StreamDatagram dg;
         dg.streamId = sid;
@@ -419,7 +450,10 @@ private:
                      "M17 RX->reflector: sid=%04x fn=%04x dst=%s src=%s last=%d\n",
                      sid, fn, lsf.dstCallsign().c_str(), lsf.srcCallsign().c_str(),
                      lastFrame ? 1 : 0);
-        m_reflector->sendStream(dg);
+        if (m_reflector)
+            m_reflector->sendStream(dg);
+        if (m_bridge)
+            m_bridge->sendStream(dg);
     }
 
     void feed(const IQBlock& block)
@@ -449,7 +483,9 @@ private:
     m17::BatchFMModulator   m_txFMMod{125000.0};
     M17Config               m_m17Config;
     std::unique_ptr<m17::M17ReflectorClient> m_reflector;
+    std::unique_ptr<m17::M17ReflectorClient> m_bridge;
     std::atomic<m17::ReflectorState> m_reflectorState{m17::ReflectorState::Disconnected};
+    std::atomic<m17::ReflectorState> m_bridgeState{m17::ReflectorState::Disconnected};
     std::atomic<ITransmit*> m_tx{nullptr};
     std::atomic<ITxArbiter*> m_arbiter{nullptr};
     std::mutex               m_txMutex;

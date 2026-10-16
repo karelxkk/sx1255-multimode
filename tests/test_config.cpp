@@ -55,6 +55,11 @@ int main()
         "      port: 20020\n"
         "  m17:\n"
         "    enabled: true\n"
+        "    bridge:\n"
+        "      enabled: true\n"
+        "      host: 127.0.0.1\n"
+        "      port: 17001\n"
+        "      module: A\n"
         "network:\n"
         "  mode: dstar\n";
 
@@ -88,6 +93,10 @@ int main()
         return 15;
     if (!config.m17.enabled)
         return 8;
+    if (!config.m17.bridge.enabled)
+        return 18;
+    if (config.m17.bridge.host != "127.0.0.1" || config.m17.bridge.port != 17001)
+        return 19;
     if (config.network.mode != "dstar")
         return 16;
     if (sx1255::parseNetworkMode(config.network.mode) != sx1255::Mode::DStar)

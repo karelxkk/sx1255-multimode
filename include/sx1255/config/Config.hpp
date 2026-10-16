@@ -84,6 +84,16 @@ struct M17Config {
     bool        enabled = true;
     std::string callsign = "N0CALL";
 
+    // Secondary M17 inet connection for m17-bridge (APRS messaging and GNSS
+    // position).  The main `reflector` stays available for voice/stream.
+    struct Bridge {
+        bool        enabled = false;
+        std::string host = "127.0.0.1";
+        int         port = 17000;
+        std::string module = "A";
+        std::string callsign;   // empty = use the main M17 callsign
+    } bridge;
+
     struct Reflector {
         bool        enabled = false;
         std::string host;
