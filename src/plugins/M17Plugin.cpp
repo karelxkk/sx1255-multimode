@@ -113,6 +113,12 @@ public:
                   logDiag(m_diagSync, "sync", line, !everyBurst);
               }
               m_decoder.decodeFrame(typ, softBits);
+              // A header that carried nothing valid must not swallow the
+              // frames behind it: hand the signal back to the synchronizer.
+              if (m_lsfRejected) {
+                  m_synchronizer.retract();
+                  m_lsfRejected = false;
+              }
               // Follow the decoder: while a packet transmission is running, a
               // single packet sync word identifies its frames, so the last
               // frame is not lost when the sync word that would follow it is
@@ -163,6 +169,7 @@ public:
               },
               [this](const m17::LSF& lsf, double ber) {   // onLSFBadCRC
                   ++m_lsfBadCrc;
+                  m_lsfRejected = true;
                   logDiag(m_diagLsf, "LSF CRC fail",
                           lsf.dstCallsign() + ">" + lsf.srcCallsign() +
                               " ber=" + std::to_string(ber));
@@ -793,6 +800,7 @@ private:
     DiagState m_diagLsf;
     DiagState m_diagFrame;
     DiagState m_diagSync;
+    bool m_lsfRejected = false;
     double m_syncConfidence = 0.0;
     int m_syncBurst = 0;
     std::chrono::steady_clock::time_point m_syncBurstStart{};

@@ -122,6 +122,7 @@ void M17Synchronizer::reset()
 
 void M17Synchronizer::extractPayload(float dist, std::uint16_t typ)
 {
+    m_canRetract = false;
     int offset = 0;
     for (int i = 0; i < m_sps / 2; ++i) {
         const float d = syncWordDistance(syncMetrics(m_symbols, i + 1, m_sps), typ);
@@ -142,9 +143,23 @@ void M17Synchronizer::extractPayload(float dist, std::uint16_t typ)
 
     const std::size_t skip = static_cast<std::size_t>(
         (static_cast<int>(SymbolsPerPayload) - offset - 16) * m_sps);
+    // Keep what is about to be consumed, so a rejected burst can be undone.
+    if (skip <= m_symbols.size()) {
+        m_extracted.assign(m_symbols.begin(), m_symbols.begin() + static_cast<std::ptrdiff_t>(skip));
+        m_canRetract = true;
+    }
     m_symbols.erase(m_symbols.begin(), m_symbols.begin() + static_cast<std::ptrdiff_t>(skip));
 
     m_sink(typ, softBits);
+}
+
+void M17Synchronizer::retract()
+{
+    if (!m_canRetract)
+        return;
+    m_symbols.insert(m_symbols.begin(), m_extracted.begin(), m_extracted.end());
+    m_extracted.clear();
+    m_canRetract = false;
 }
 
 void M17Synchronizer::push(float sample)

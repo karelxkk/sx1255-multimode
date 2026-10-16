@@ -63,6 +63,14 @@ public:
     void push(float sample);
     void reset();
 
+    // Undo the payload extraction of the last burst.  A sync word that turns
+    // out to carry nothing valid (a false header, a header whose CRC fails)
+    // must not swallow the signal that follows it - the frames behind it are
+    // real.  Only the sync word itself stays consumed, so the same window
+    // cannot trigger again.
+    void retract();
+    bool canRetract() const { return m_canRetract; }
+
     // setExpectedType tells the synchronizer which frame type to expect while
     // a transmission is already being received (PacketSync after a packet-mode
     // LSF).  The following frames are then recognized by their sync word alone,
@@ -97,6 +105,8 @@ private:
     SyncMetrics m_lastMetrics{};
     bool m_lastFollow = false;
     std::uint64_t m_samples = 0;
+    std::vector<Symbol> m_extracted;   // payload samples of the last burst
+    bool m_canRetract = false;
 };
 
 }  // namespace sx1255::m17

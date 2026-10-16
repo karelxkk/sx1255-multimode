@@ -194,6 +194,19 @@ int main()
         failures += check("header without preamble", r, 1, "Bez preambule") ? 0 : 1;
     }
 
+    {   // A false header in front of a real transmission must not swallow it:
+        // the payload that was consumed to try decoding it is handed back.
+        std::vector<Symbol> syms;
+        for (std::size_t i = 0; i < 400; ++i)          // idle pattern, which is
+            syms.push_back(i % 2 ? +3.0F : -3.0F);     // the same as a preamble
+        syms.insert(syms.end(), LSFSyncSymbols.begin(), LSFSyncSymbols.end());
+        for (std::size_t i = 0; i < 600; ++i)          // payload of the false header
+            syms.push_back(PacketSyncSymbols[i % PacketSyncSymbols.size()]);
+        const Results r = runRX(concat(concat(std::move(syms), packetSymbols("Po falsi")),
+                                       filler(600)));
+        failures += check("false header before a packet", r, 1, "Po falsi") ? 0 : 1;
+    }
+
     if (failures != 0)
         std::printf("%d scenario(s) failed\n", failures);
     return failures == 0 ? 0 : 1;

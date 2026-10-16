@@ -79,7 +79,9 @@ int main(int argc, char** argv)
         std::printf("  LSF ok %s>%s %s ber=%.1f%%\n", lsf.srcCallsign().c_str(),
                     lsf.dstCallsign().c_str(), lsf.lsfType() == 0 ? "packet" : "stream", ber);
     };
-    callbacks.onLSFBadCRC = [](const LSF&, double ber) {
+    bool lsfRejected = false;
+    callbacks.onLSFBadCRC = [&](const LSF&, double ber) {
+        lsfRejected = true;
         std::printf("  LSF bad crc ber=%.1f%%\n", ber);
     };
     callbacks.onPacket = [](const LSF& lsf, const std::vector<std::uint8_t>& payload, double ber) {
@@ -138,6 +140,10 @@ int main(int argc, char** argv)
                     decoder.syncedType() == PacketSync ? "packet"
                         : (decoder.syncedType() == StreamSync ? "stream" : "idle"));
         decoder.decodeFrame(typ, bits);
+        if (lsfRejected) {
+            syncPtr->retract();
+            lsfRejected = false;
+        }
         syncPtr->setExpectedType(decoder.syncedType() == PacketSync ? PacketSync : 0);
     }, thresholds);
     syncPtr = &synchronizer;
