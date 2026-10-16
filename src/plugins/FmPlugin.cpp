@@ -235,7 +235,6 @@ private:
         bridgeCfg.rxMaxDevHz    = m_config.svxlink.rxMaxDevHz;
         bridgeCfg.txDevHz       = m_config.svxlink.txDevHz;
         bridgeCfg.txGain        = m_config.svxlink.txGain;
-        bridgeCfg.ctcssHz       = m_config.ctcssRx;
         bridgeCfg.deemphTau     = m_config.svxlink.rxDeemphUs * 1e-6;
         bridgeCfg.preemphTau    = m_config.svxlink.txPreemphUs * 1e-6;
         bridgeCfg.rxAudioLpHz   = m_config.svxlink.rxAudioLpfHz;

@@ -26,7 +26,6 @@ struct SvxlinkBridgeConfig {
     // tx_gain is a fine trim around this reference.
     double txDevHz    = 2500.0;
     double txGain     = 1.75;     // 1:1 with sx1255-fm-repeater TX_GAIN
-    double ctcssHz    = 88.5;     // CTCSS tone (and harmonics) to strip from RX audio
     // Audio channel shaping.  Defaults are narrow-band FM (12.5 kHz) values;
     // widen `rxAudioLpHz`/`txAudioLpHz` (and the deviation) for 25 kHz wide FM.
     double deemphTau  = 75e-6;    // RX de-emphasis time constant

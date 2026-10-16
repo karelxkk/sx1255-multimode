@@ -154,42 +154,6 @@ private:
     ComplexFloat m_yPrev{0.0F, 0.0F};
 };
 
-// Narrow 2nd-order IIR notch.  Used to remove the CTCSS tone and its harmonics
-// from the RX audio that is forwarded to SVXLink; multimode owns the squelch
-// detection, so the tone no longer has to survive into the repeated audio.
-class NotchFilter {
-public:
-    NotchFilter(double sampleRateHz, double freqHz, double q = 24.0)
-    {
-        const double w0 = 2.0 * kPi * freqHz / sampleRateHz;
-        const double alpha = std::sin(w0) / (2.0 * q);
-        const double a0 = 1.0 + alpha;
-
-        m_b0 = 1.0 / a0;
-        m_b1 = (-2.0 * std::cos(w0)) / a0;
-        m_b2 = 1.0 / a0;
-        m_a1 = (-2.0 * std::cos(w0)) / a0;
-        m_a2 = (1.0 - alpha) / a0;
-    }
-
-    float process(float x)
-    {
-        const double y = m_b0 * x + m_b1 * m_x1 + m_b2 * m_x2
-                       - m_a1 * m_y1 - m_a2 * m_y2;
-        m_x2 = m_x1;
-        m_x1 = x;
-        m_y2 = m_y1;
-        m_y1 = y;
-        return static_cast<float>(y);
-    }
-
-private:
-    double m_b0 = 1.0, m_b1 = 0.0, m_b2 = 0.0;
-    double m_a1 = 0.0, m_a2 = 0.0;
-    double m_x1 = 0.0, m_x2 = 0.0;
-    double m_y1 = 0.0, m_y2 = 0.0;
-};
-
 bool openPcm(snd_pcm_t*& pcm, const std::string& device, snd_pcm_stream_t stream,
              unsigned int rate, bool nonBlocking)
 {
@@ -382,16 +346,6 @@ void FmSvxlinkBridge::rxThread()
     DeEmphasis deemph(m_config.deemphTau, static_cast<double>(m_config.audioRate));
     FirFilter audioLpf(static_cast<float>(m_config.audioRate),
                        static_cast<float>(m_config.rxAudioLpHz));
-    std::vector<NotchFilter> ctcssNotches;
-    if (m_config.ctcssHz > 0.0) {
-        // The CTCSS tone is often synthesized as a clipped/stepped sine, so
-        // its harmonics reach well into the voice band (measured up to ~1.3 kHz
-        // on air).  Notch them all out while leaving the voice between them.
-        for (int n = 1; n <= 20; ++n)
-            ctcssNotches.emplace_back(static_cast<double>(m_config.audioRate),
-                                      static_cast<double>(n) * m_config.ctcssHz);
-    }
-
     int decPhase = 0;
     double rxInT = 0.0;
     double rxNextOutT = 0.0;
@@ -448,8 +402,6 @@ void FmSvxlinkBridge::rxThread()
             float a = rxPrevIf + static_cast<float>(frac) * (aIf - rxPrevIf);
             a = deemph.process(a);
             a = audioLpf.process(a);
-            for (NotchFilter& notch : ctcssNotches)
-                a = notch.process(a);
             a = std::clamp(a, -1.0F, 1.0F);
             audio.push_back(a);
 

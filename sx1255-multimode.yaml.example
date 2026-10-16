@@ -42,8 +42,13 @@ frontend:
 modes:
   fm:
     enabled: true             # zapnout FM plugin
+    # CTCSS se v multimode jen detekuje (otevírá RX relaci a squelch pro
+    # SVXLink).  Audio do SVXLinku se nijak nefiltruje - tón 88,5 Hz i jeho
+    # harmonické procházejí, takže si je SVXLink zpracuje sám.  Filtrování
+    # notchi v multimode dřív kazilo kvalitu demodulovaného zvuku.
     ctcss_rx: 88.5            # CTCSS tón, který otevírá RX
-    ctcss_tx: 88.5            # CTCSS tón na TX; použije se při backend: local
+    ctcss_tx: 88.5            # CTCSS tón generovaný na TX (0 = negenerovat;
+                              # při 0 se opakuje tón z přijímaného audia)
     hang_time_ms: 3000        # dojezd po ztrátě nosné
 
     # backend: local  = multimode sám dělá FM převaděč (CTCSS RX/TX, hang)

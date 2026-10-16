@@ -1,3 +1,12 @@
+sx1255-multimode (1.0.0~rc5-2) unstable; urgency=medium
+
+  * FM: the RX audio forwarded to SVXLink is no longer filtered.  The CTCSS
+    notch bank (20 notches at n x 88.5 Hz across the whole voice band) was
+    audibly degrading the demodulated audio; the tone now passes through and
+    SVXLink handles it.  CTCSS detection in the multimode is unchanged.
+
+ -- Karel Kadlec (OK1LBC) <xkk@post.cz>  Sat, 17 Oct 2026 10:00:00 +0000
+
 sx1255-multimode (1.0.0~rc5-1) unstable; urgency=medium
 
   * M17 packet reception no longer loses packets: the decoder re-synchronizes
