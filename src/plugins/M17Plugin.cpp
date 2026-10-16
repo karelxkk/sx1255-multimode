@@ -122,10 +122,12 @@ public:
           },
           syncThresholds(config))
         , m_decoder(m17::Decoder::Callbacks{
-              [this](const m17::LSF&, double) {       // onLSF
+              [this](const m17::LSF& lsf, double) {   // onLSF
                   m_lsfDecoded = true;
                   m_lastActivity = std::chrono::steady_clock::now();
-                  std::fprintf(stderr, "M17: LSF decoded\n");
+                  std::fprintf(stderr, "M17: LSF decoded (%s %s>%s)\n",
+                               lsf.lsfType() == 0 ? "packet" : "stream",
+                               lsf.srcCallsign().c_str(), lsf.dstCallsign().c_str());
               },
               [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload,
                      std::uint16_t sid, std::uint16_t fn, double) {   // onStream
@@ -183,6 +185,12 @@ public:
               [this]() {   // onEOT: the decoder saw the end of a transmission
                   m_eotSeen = true;
                   m_lastActivity = std::chrono::steady_clock::now();
+              },
+              [this](const m17::LSF& lsf) {   // onPacketReattached
+                  m_lastActivity = std::chrono::steady_clock::now();
+                  std::fprintf(stderr,
+                               "M17 RF->NET: frame re-attached to the previous packet LSF (%s>%s)\n",
+                               lsf.srcCallsign().c_str(), lsf.dstCallsign().c_str());
               }})
         , m_m17Config(std::move(config))
         , m_stats(stats)
@@ -320,6 +328,11 @@ public:
     {
         m_detected = false;
         m_lsfDecoded = false;
+        // A quiet channel must not leave a stale packet header behind that a
+        // much later frame could be attached to.
+        if (std::chrono::steady_clock::now() - m_lastActivity >
+            std::chrono::milliseconds(m_m17Config.idleTimeoutMs))
+            m_decoder.expireRetention();
         feed(block);
         // A valid LSF (Golay + CRC) is trusted immediately; otherwise require
         // two syncs inside a short window.  A single noise correlation used to
@@ -397,6 +410,7 @@ public:
         t.metrics["packets_rx"] = static_cast<double>(counters.packets);
         t.metrics["packets_bad_crc"] = static_cast<double>(counters.packetsBadCRC);
         t.metrics["frames_dropped"] = static_cast<double>(m_framesDropped);
+        t.metrics["frames_reattached"] = static_cast<double>(counters.reattached);
         t.metrics["rf_packets"] = static_cast<double>(m_rfPackets);
         t.metrics["rf_packets_forwarded"] = static_cast<double>(m_rfPacketsForwarded);
         t.metrics["rf_packets_not_forwarded"] = static_cast<double>(m_rfPacketsNotForwarded);

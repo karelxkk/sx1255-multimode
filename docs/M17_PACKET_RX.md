@@ -17,6 +17,9 @@ packet, který přijde během relace FM/D-Star.
 3. **Vymazaný synchronizátor.** Při startu relace se synchronizátor resetoval,
    čímž se zahodily vzorky, které už obsahovaly rámec následující hned po LSF.
    Typicky tak zmizel poslední (u krátké SMS jediný) rámec packetu.
+   Druhá strana téže mince: když se stav dekodéru ztratil (falešná koncová
+   značka nebo minutá hlavička dalšího pokusu), rámce, které následovaly,
+   zůstaly bez hlavičky a nedaly se doručit.
 4. **EOT ze šumu.** Relaci ukončovala jakákoli detekce koncové značky, i zjevně
    falešná (např. během příjmu packetu).
 5. **Poslední rámec bez následujícího syncu.** Detekce packet rámce vyžadovala
@@ -39,6 +42,9 @@ packet, který přijde během relace FM/D-Star.
   korektně uzavře.
 - Packet rámce se skládají podle čísla rámce, takže rámec mimo pořadí nebo po
   poškozeném rámci se uloží na správné místo místo zahození.
+- Poslední packet LSF se drží ještě chvíli (64 rámců): pokud se stav mezitím
+  ztratí, rámce se k němu přidruží a rozhodne až CRC payloadu. Po tichu na
+  kanálu se držení uvolní, aby se hlavička nepřiřadila k něčemu vzdálenému.
 - Synchronizátor se při startu ani konci relace nevymazává.
 - Koncovou značku bere dekodér vážně jen ve chvíli, kdy je synchronizovaný; jinak
   ji ignoruje a relaci neukončí.
@@ -76,6 +82,7 @@ M17 NET RX: 1 packet(s) expired after 2000 ms without a free channel
 | `packets_rx` | doručené packety (RF → síť) |
 | `packets_bad_crc` | packet s chybným CRC (nedoručen, zalogován) |
 | `frames_dropped` | rámce, které nešlo použít (bez LSF apod.) |
+| `frames_reattached` | rámce přidružené k nedávné hlavičce po ztrátě stavu |
 | `rf_packets`, `rf_packets_forwarded`, `rf_packets_not_forwarded` | kolik packetů z RF přišlo a kolik se jich poslalo do sítě |
 | `net_packets_queued`, `net_packets_sent`, `net_packets_dropped`, `net_packets_pending` | fronta směru síť → RF |
 

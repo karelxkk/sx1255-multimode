@@ -119,6 +119,9 @@ public:
         std::function<void(const LSF&, const std::vector<std::uint8_t>& payload, double ber)> onPacketBadCRC;
         std::function<void(std::uint16_t syncType, const char* reason)> onFrameDropped;
         std::function<void()> onEOT;
+        // A packet frame arrived after the transmission state was lost, but the
+        // recent packet LSF was still known, so the frame was re-attached to it.
+        std::function<void(const LSF&)> onPacketReattached;
     };
 
     // Frame level counters, surfaced through the plugin telemetry so an
@@ -131,6 +134,7 @@ public:
         std::uint64_t packetsBadCRC = 0;
         std::uint64_t packetFrames = 0;    // packet frames written into the buffer
         std::uint64_t framesDropped = 0;   // sync bursts that could not be used
+        std::uint64_t reattached = 0;      // frames re-attached to a recent LSF
     };
 
     explicit Decoder(Callbacks callbacks);
@@ -142,6 +146,9 @@ public:
     const LSF* currentLSF() const { return m_lsf ? &m_lsf.value() : nullptr; }
     Counters counters() const { return m_counters; }
     std::uint16_t syncedType() const { return m_syncedType; }
+    // Forget the retained packet LSF; the plugin calls this when the channel
+    // has been quiet, so a stale header cannot be attached to a later frame.
+    void expireRetention();
 
 private:
     std::pair<LSF, int> decodeLSF(const std::vector<SoftBit>& softBits);
@@ -174,7 +181,14 @@ private:
     int m_errors = 0;
     int m_bits = 0;
     std::uint32_t m_streamCounter = 1;
+    // The last packet LSF is kept for a while: an attempt whose header was
+    // decoded must not lose its frames because the state was reset in between
+    // (spurious end marker, missed header of the next attempt).
+    std::optional<LSF> m_lastPacketLsf;
+    int m_lastPacketLsfAge = 0;
     Counters m_counters{};
+
+    static constexpr int kLsfRetentionFrames = 64;
 };
 
 }  // namespace sx1255::m17

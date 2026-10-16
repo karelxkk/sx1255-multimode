@@ -826,6 +826,10 @@ void Decoder::lichLSF(const LSF& lsf, int e)
 
 void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBits)
 {
+    // Any burst counts as activity for the LSF retention below.
+    if (m_lastPacketLsfAge < kLsfRetentionFrames + 1)
+        ++m_lastPacketLsfAge;
+
     if (typ == LSFSync) {
         // A valid LSF always starts a new transmission.  It must never be
         // ignored because the decoder still believes it is inside an earlier
@@ -862,9 +866,12 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
             m_lichParts = 0;
             m_streamFN = 0;
             m_streamID = static_cast<std::uint16_t>(m_streamCounter++);
+            m_lastPacketLsf.reset();
         } else {
             m_syncedType = PacketSync;
             m_packetData.assign(33 * 25, 0);
+            m_lastPacketLsf = lsf;
+            m_lastPacketLsfAge = 0;
         }
         if (m_cb.onLSF)
             m_cb.onLSF(*m_lsf, static_cast<double>(e) / 3.68);
@@ -873,10 +880,27 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
 
     if (typ == PacketSync) {
         if (m_syncedType != PacketSync) {
-            // There is no packet-mode LSF behind this frame, so it cannot be
-            // routed anywhere.  Report it rather than dropping it silently.
-            dropFrame(typ, "packet frame without a valid LSF");
-            return;
+            if (m_lastPacketLsf && m_lastPacketLsfAge <= kLsfRetentionFrames) {
+                // The header of this transmission was decoded a moment ago but
+                // the state was reset in between (a spurious end marker, or the
+                // next attempt whose header was missed).  The frames still
+                // belong to that header; the payload CRC decides afterwards.
+                m_lsf = *m_lastPacketLsf;
+                m_gotLSF = true;
+                m_syncedType = PacketSync;
+                m_packetData.assign(33 * 25, 0);
+                m_lastPacketFN = 0xff;
+                m_errors = 0;
+                m_bits = 368;
+                m_lastPacketLsfAge = 0;
+                ++m_counters.reattached;
+                if (m_cb.onPacketReattached)
+                    m_cb.onPacketReattached(*m_lsf);
+            } else {
+                // No header at all: the frame cannot be routed anywhere.
+                dropFrame(typ, "packet frame without a valid LSF");
+                return;
+            }
         }
         auto [pktFrame, e] = decodePacketFrame(softBits);
         m_errors += e;
@@ -1028,6 +1052,12 @@ void Decoder::dropFrame(std::uint16_t typ, const char* reason)
     m_counters.framesDropped++;
     if (m_cb.onFrameDropped)
         m_cb.onFrameDropped(typ, reason);
+}
+
+void Decoder::expireRetention()
+{
+    m_lastPacketLsf.reset();
+    m_lastPacketLsfAge = kLsfRetentionFrames + 1;
 }
 
 void Decoder::reset()
