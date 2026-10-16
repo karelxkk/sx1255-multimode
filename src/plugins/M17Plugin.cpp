@@ -60,26 +60,34 @@ public:
         , m_synchronizer(5, [this](std::uint16_t typ, const std::vector<m17::SoftBit>& softBits) {
               const auto now = std::chrono::steady_clock::now();
               m_lastActivity = now;
-              // Noise produces the occasional stray correlation.  Require a
-              // burst of several syncs inside a short window before declaring
-              // M17; a real stream emits them every frame (~25/s).  This only
-              // decides who owns the channel: decoding below runs regardless,
-              // so a short packet is never lost because it did not raise the
-              // burst count.
-              if (m_syncBurst == 0 || now - m_syncBurstStart > std::chrono::milliseconds(500)) {
-                  m_syncBurst = 1;
-                  m_syncBurstStart = now;
-              } else {
-                  ++m_syncBurst;
-              }
-              if (m_syncBurst >= m_m17Config.minSyncBurst) {
-                  m_detected = true;
-                  m_syncConfidence = 1.0;
-              }
               m_frameCount++;
               m_syncCount++;
               if (typ == m17::LSFSync)
                   m_lsfCount++;
+              // Noise produces the occasional stray correlation, and a header
+              // that matched by accident must not claim the channel.  A burst
+              // only counts towards detection when it carried something the
+              // decoder could use: it was already inside a transmission, or it
+              // just produced a valid header.  Decoding below runs regardless,
+              // so a short packet is never lost because it did not raise the
+              // burst count.
+              const std::uint16_t syncedBefore = m_decoder.syncedType();
+              m_decoder.decodeFrame(typ, softBits);
+              const bool useful = m_lsfDecoded || syncedBefore != 0 ||
+                                  m_decoder.syncedType() != 0;
+              if (useful) {
+                  if (m_syncBurst == 0 ||
+                      now - m_syncBurstStart > std::chrono::milliseconds(500)) {
+                      m_syncBurst = 1;
+                      m_syncBurstStart = now;
+                  } else {
+                      ++m_syncBurst;
+                  }
+                  if (m_syncBurst >= m_m17Config.minSyncBurst) {
+                      m_detected = true;
+                      m_syncConfidence = 1.0;
+                  }
+              }
               if (m_m17Config.logSync) {
                   // Burst level diagnostics: what the synchronizer actually
                   // hears, how close the match was and in which state the
