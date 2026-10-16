@@ -320,6 +320,7 @@ Config loadConfig(const std::string& path)
     config.m17.idleTimeoutMs = static_cast<int>(optInt(*m17, "idle_timeout_ms", config.m17.idleTimeoutMs));
     config.m17.decodeDuringOtherSessions =
         optBool(*m17, "decode_during_other_sessions", config.m17.decodeDuringOtherSessions);
+    config.m17.logSync = optBool(*m17, "log_sync", config.m17.logSync);
     config.m17.networkPacketQueue =
         static_cast<int>(optInt(*m17, "network_packet_queue", config.m17.networkPacketQueue));
     config.m17.networkPacketTtlMs =
@@ -465,6 +466,7 @@ std::string serializeConfig(const Config& config)
     out << "    idle_timeout_ms: " << config.m17.idleTimeoutMs << '\n';
     out << "    decode_during_other_sessions: "
         << (config.m17.decodeDuringOtherSessions ? "true" : "false") << '\n';
+    out << "    log_sync: " << (config.m17.logSync ? "true" : "false") << '\n';
     out << "    network_packet_queue: " << config.m17.networkPacketQueue << '\n';
     out << "    network_packet_ttl_ms: " << config.m17.networkPacketTtlMs << '\n';
     out << "    bridge:\n";

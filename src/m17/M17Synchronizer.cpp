@@ -129,6 +129,7 @@ void M17Synchronizer::extractPayload(float dist, std::uint16_t typ)
 
 void M17Synchronizer::push(float sample)
 {
+    ++m_samples;
     m_symbols.push_back(static_cast<Symbol>(sample));
     if (m_symbols.size() < m_bufSize)
         return;
@@ -159,13 +160,19 @@ void M17Synchronizer::push(float sample)
     if (dist < candidates[best].limit)
         typ = candidates[best].type;
 
-    // Follow mode: while a packet transmission is being received, the sync word
-    // of the frame alone identifies it.  This only adds detections the blind
-    // search missed, so a packet whose last frame is not followed by another
-    // sync word or by the EOT marker still arrives.
-    if (typ == 0 && m_expectedType == PacketSync && metrics.packetOnly < m_thresholds.follow) {
+    // Follow mode: while a packet transmission is already being received, the
+    // packet sync word alone identifies its frames.  This must not depend on
+    // the blind best-of-six result: in a real transmission the pair windows
+    // (which look one frame ahead) can be much worse than the sync word
+    // itself, which used to leave the detection sitting right at the
+    // threshold.  An LSF wins over it - that is a 16 symbol match and means a
+    // new transmission starts.
+    m_lastFollow = false;
+    if (m_expectedType == PacketSync && metrics.packetOnly < m_thresholds.follow &&
+        !(typ == LSFSync && dist < m_thresholds.lsf)) {
         typ = PacketSync;
         dist = metrics.packetOnly;
+        m_lastFollow = true;
     }
 
     if (typ == 0) {
@@ -174,11 +181,15 @@ void M17Synchronizer::push(float sample)
     }
 
     if (typ == EOTMarker) {
+        m_lastDistance = dist;
+        m_lastMetrics = metrics;
         m_symbols.erase(m_symbols.begin(), m_symbols.begin() + 16 * m_sps);
         m_sink(typ, {});
         return;
     }
 
+    m_lastDistance = dist;
+    m_lastMetrics = metrics;
     extractPayload(dist, typ);
 }
 

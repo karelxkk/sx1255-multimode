@@ -121,3 +121,25 @@ cd build && ninja && ctest -R m17 --output-on-failure
 - `dispatcher` – ověřuje, že plugin, který nevlastní relaci, dostává `monitor()`.
 - `session_manager` – ověřuje, že packet projde i když je síťový mód jiný
   (`acquireTxPacket` vs. `acquireTx`).
+
+## Diagnostika reálného přenosu
+
+Když je potřeba zjistit, co rádio skutečně poslalo (kolik kopií, jak daleko byl
+sync od ideálu, v jakém stavu byl dekodér), zapni v konfiguraci `log_sync`:
+
+```yaml
+m17:
+  log_sync: true
+```
+
+Pak se do journalu loguje každý burst:
+
+```text
+M17 sync: LSF dist=1.42 decoder=idle
+M17 sync: packet dist=0.91 decoder=packet
+M17 sync: packet dist=1.05 decoder=packet
+M17 sync: EOT dist=2.10 decoder=idle
+```
+
+LSF a packet rámce se logují vždy, stream bursty nejvýš jednou za sekundu
+(u hlasu jich je 25/s). Po testu `log_sync` zase vypni.

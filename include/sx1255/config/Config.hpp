@@ -104,6 +104,9 @@ struct M17Config {
     // arrives during an FM/D-Star session (or their hang time) still reaches
     // the network.
     bool   decodeDuringOtherSessions = true;
+    // Log every detected sync burst (type, distance, decoder state).  Verbose,
+    // meant for diagnosing what a real radio actually transmits.
+    bool   logSync = false;
     // Network -> RF packets wait in this queue instead of being dropped when
     // the channel is briefly busy; they expire after the TTL.
     int    networkPacketQueue = 8;

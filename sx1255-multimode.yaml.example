@@ -107,6 +107,10 @@ modes:
     # Dekódovat M17 i když relaci vlastní jiný mód (FM, D-Star nebo jejich
     # hang time) - packet se tak neztratí, když je kanál zrovna obsazený.
     decode_during_other_sessions: true
+    # Diagnostika: vypsat každý detekovaný sync burst (typ, vzdálenost, stav
+    # dekodéru). Zapnout jen pro test s reálným rádiem - LSF a packet rámce se
+    # logují vždy, stream bursty nejvýš 1x za sekundu.
+    log_sync: false
     # Packety ze sítě čekají na volný kanál ve frontě (místo zahození).
     network_packet_queue: 8
     network_packet_ttl_ms: 2000

@@ -65,6 +65,16 @@ public:
     void setExpectedType(std::uint16_t typ) { m_expectedType = typ; }
     std::uint16_t expectedType() const { return m_expectedType; }
     const SyncThresholds& thresholds() const { return m_thresholds; }
+    // Distance of the sync burst emitted last (diagnostics).
+    float lastDistance() const { return m_lastDistance; }
+    // Metrics of the sync burst emitted last (diagnostics).
+    const SyncMetrics& lastMetrics() const { return m_lastMetrics; }
+    // True when the last burst was recognized by its sync word alone, because
+    // the receiver already knew a packet transmission was running.
+    bool lastFollow() const { return m_lastFollow; }
+    // Number of samples pushed since start; the difference between two bursts
+    // is their spacing in samples (diagnostics).
+    std::uint64_t samples() const { return m_samples; }
 
     std::size_t bufferedSamples() const { return m_symbols.size(); }
 
@@ -77,6 +87,10 @@ private:
     std::vector<Symbol> m_symbols;
     std::size_t m_bufSize;
     std::uint16_t m_expectedType = 0;
+    float m_lastDistance = 0.0F;
+    SyncMetrics m_lastMetrics{};
+    bool m_lastFollow = false;
+    std::uint64_t m_samples = 0;
 };
 
 }  // namespace sx1255::m17

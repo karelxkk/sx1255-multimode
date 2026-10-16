@@ -79,6 +79,38 @@ public:
               m_syncCount++;
               if (typ == m17::LSFSync)
                   m_lsfCount++;
+              if (m_m17Config.logSync) {
+                  // Burst level diagnostics: what the synchronizer actually
+                  // hears, how close the match was and in which state the
+                  // decoder is.  Packet relevant bursts (LSF, packet frames)
+                  // are always logged; stream bursts are rate limited so a
+                  // voice transmission cannot flood the journal.
+                  const m17::SyncMetrics metrics = m_synchronizer.lastMetrics();
+                  char components[160];
+                  std::snprintf(components, sizeof(components),
+                                "only=%.2f pair=%.2f end=%.2f lsf=%.2f eot=%.2f",
+                                static_cast<double>(typ == m17::PacketSync ? metrics.packetOnly
+                                                   : (typ == m17::StreamSync ? metrics.streamOnly
+                                                                             : metrics.lsf)),
+                                static_cast<double>(typ == m17::StreamSync ? metrics.streamPair
+                                                                            : metrics.packetPair),
+                                static_cast<double>(typ == m17::StreamSync ? metrics.streamEnd
+                                                                            : metrics.packetEnd),
+                                static_cast<double>(metrics.lsf),
+                                static_cast<double>(metrics.eotPair));
+                  const std::string line = syncName(typ) +
+                      " dist=" + std::to_string(static_cast<double>(m_synchronizer.lastDistance())) +
+                      " " + components +
+                      " follow=" + (m_synchronizer.lastFollow() ? "1" : "0") +
+                      " samples=" + std::to_string(m_synchronizer.samples()) +
+                      " decoder=" + (m_decoder.syncedType() == m17::PacketSync ? "packet"
+                                      : (m_decoder.syncedType() == m17::StreamSync ? "stream" : "idle"));
+                  // LSF and packet frames are logged as they come (there are
+                  // only a handful per transmission); stream bursts are rate
+                  // limited, otherwise a voice transmission floods the journal.
+                  const bool everyBurst = typ == m17::LSFSync || typ == m17::PacketSync;
+                  logDiag(m_diagSync, "sync", line, !everyBurst);
+              }
               m_decoder.decodeFrame(typ, softBits);
               // Follow the decoder: while a packet transmission is running, a
               // single packet sync word identifies its frames, so the last
@@ -633,11 +665,24 @@ private:
         return buf;
     }
 
-    // Called from the receive thread only.
-    void logDiag(DiagState& state, const char* kind, const std::string& message)
+    static std::string syncName(std::uint16_t typ)
+    {
+        switch (typ) {
+            case m17::LSFSync:    return "LSF";
+            case m17::PacketSync: return "packet";
+            case m17::StreamSync: return "stream";
+            case m17::EOTMarker:  return "EOT";
+            default:              return hexSync(typ);
+        }
+    }
+
+    // Called from the receive thread only.  With limit == false every event is
+    // printed, otherwise at most one line per second (the counter still keeps
+    // track of everything).
+    void logDiag(DiagState& state, const char* kind, const std::string& message, bool limit = true)
     {
         const auto now = std::chrono::steady_clock::now();
-        if (state.last != std::chrono::steady_clock::time_point{} &&
+        if (limit && state.last != std::chrono::steady_clock::time_point{} &&
             now - state.last < std::chrono::seconds(1)) {
             ++state.suppressed;
             return;
@@ -724,6 +769,7 @@ private:
     std::uint64_t m_netPacketsDropped = 0;
     DiagState m_diagLsf;
     DiagState m_diagFrame;
+    DiagState m_diagSync;
     double m_syncConfidence = 0.0;
     int m_syncBurst = 0;
     std::chrono::steady_clock::time_point m_syncBurstStart{};
