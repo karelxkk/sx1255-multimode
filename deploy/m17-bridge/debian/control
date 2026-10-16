@@ -1,5 +1,5 @@
 Package: m17-bridge
-Version: 0.8.0-1
+Version: 0.8.0-2
 Section: hamradio
 Priority: optional
 Architecture: arm64

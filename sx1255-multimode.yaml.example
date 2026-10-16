@@ -93,7 +93,7 @@ modes:
     bridge:
       enabled: false          # m17-bridge pro APRS zprávy a polohu
       host: 127.0.0.1         # kde běží m17-bridge
-      port: 17000             # UDP port m17-bridge
+      port: 17001             # UDP port m17-bridge (mimo mrefd 17000)
       module: A               # modul s APRS bridge
     reflector:
       enabled: false           # připojit se k M17 reflektor

@@ -8,7 +8,7 @@ Balíček obsahuje arm64 binárku `m17-bridge`, APRS konfiguraci a systemd unit.
 ./build-deb.sh
 ```
 
-Výsledek: `build/m17-bridge_0.8.0-1_arm64.deb`.
+Výsledek: `build/m17-bridge_0.8.0-2_arm64.deb`.
 
 Pokud je dostupné Go a zdrojový strom m17, balíček se přebuilduje z aktuálního
 zdroje:
@@ -26,7 +26,7 @@ Jinak se použije předpřipravená binárka, nebo se předá druhým argumentem
 ## Instalace
 
 ```text
-sudo apt install ./m17-bridge_0.8.0-1_arm64.deb
+sudo apt install ./m17-bridge_0.8.0-2_arm64.deb
 sudo nano /etc/m17-bridge.ini
 sudo systemctl start m17-bridge
 ```
@@ -44,7 +44,7 @@ m17:
   bridge:
     enabled: true
     host: <IP Pi 5>
-    port: 17000
+    port: 17001
     module: A
 ```
 

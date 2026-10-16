@@ -13,6 +13,8 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
   a GNSS polohu.
 - M17 plugin má druhé nezávislé inet připojení `m17.bridge`, takže hlasový
   `m17.reflector` (mrefd) a APRS/messaging `m17-bridge` mohou běžet současně.
+- Samostatný APRS balíček `m17-bridge` (`deploy/m17-bridge/`) včetně systemd
+  unit a konfigurace; výchozí port je 17001, aby nekolidoval s mrefd na 17000.
 - Unit test `m17_packet_loopback` (packet TX → RX dekóduje stejný payload).
 
 ### Opraveno

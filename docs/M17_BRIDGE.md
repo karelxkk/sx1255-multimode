@@ -19,7 +19,7 @@ m17:
   bridge:
     enabled: true
     host: 127.0.0.1     # kde běží m17-bridge
-    port: 17000
+    port: 17001         # mimo port mrefd (17000)
     module: A           # modul, na kterém je v m17-bridge APRS module
   reflector:
     enabled: true

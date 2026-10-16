@@ -12,7 +12,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-VERSION="0.8.0-1"
+VERSION="0.8.0-2"
 PACKAGE="m17-bridge"
 ARCH="arm64"
 OUT="${1:-build/${PACKAGE}_${VERSION}_${ARCH}.deb}"
