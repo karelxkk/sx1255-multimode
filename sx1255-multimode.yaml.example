@@ -18,15 +18,16 @@ frontend:
   gpio:
     chip: /dev/gpiochip0     # gpiochip pro reset/PTT
     reset: 25                 # BCM GPIO25 = reset SX1255
-    # Tento HAT (B2) používá jen reset na GPIO25. RX/TX přepíná čip přes SPI,
-    # takže rx_enable/tx_enable/ptt jsou -1 (vypnuto). Pozor: GPIO18 je I2S
-    # BCLK, nikdy ho nepoužívat jako PTT!
-    # tx_enable: pin pro ovládání externího PA (TX enable); -1 = nezapojeno.
+    # Tento HAT (B2) používá jen reset na GPIO25. RX/TX přepíná čip přes SPI.
+    # Externí PA/LNA linky jsou proto -1 (nezapojeno):
+    #   tx_enable = enable/bias externího PA nebo přepnutí RF cesty do TX
+    #   rx_enable = enable RX cesty / LNA
+    #   ptt       = vlastní klíčování externí PA (PTT)
+    # V aktuálním kódu se tx_enable a ptt přepínají společně při setPtt().
+    # Když má PA jen jeden ovládací vstup, použij ptt a tx_enable nech -1.
+    # Pozor: GPIO18 je I2S BCLK a nesmí se použít jako PTT.
     tx_enable: -1
-    # rx_enable: pin pro ovládání externího LNA/RX enable; -1 = nezapojeno.
     rx_enable: -1
-    # ptt: pin pro ovládání externí PA (PTT); -1 = nezapojeno.
-    #      Sem patří BCM číslo GPIO, které má klíčovat PA.
     ptt: -1
 
   alsa:
