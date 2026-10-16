@@ -81,6 +81,24 @@ add_executable(test_dstar_detect test_dstar_detect.cpp)
 target_link_libraries(test_dstar_detect PRIVATE sx1255_core)
 add_test(NAME dstar_detect COMMAND test_dstar_detect)
 
+add_executable(test_dstar_loopback test_dstar_loopback.cpp)
+target_link_libraries(test_dstar_loopback PRIVATE sx1255_core)
+add_test(NAME dstar_loopback COMMAND test_dstar_loopback)
+
+add_executable(test_dstar_plugin test_dstar_plugin.cpp)
+target_link_libraries(test_dstar_plugin PRIVATE sx1255_core)
+add_test(NAME dstar_plugin COMMAND test_dstar_plugin)
+
+add_executable(test_dstar_gateway test_dstar_gateway.cpp)
+target_link_libraries(test_dstar_gateway PRIVATE sx1255_core)
+add_test(NAME dstar_gateway COMMAND test_dstar_gateway)
+set_tests_properties(dstar_gateway PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(test_dstar_netplugin test_dstar_netplugin.cpp)
+target_link_libraries(test_dstar_netplugin PRIVATE sx1255_core)
+add_test(NAME dstar_netplugin COMMAND test_dstar_netplugin)
+set_tests_properties(dstar_netplugin PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(test_runtime_stats test_runtime_stats.cpp)
 target_link_libraries(test_runtime_stats PRIVATE sx1255_core)
 add_test(NAME runtime_stats COMMAND test_runtime_stats)

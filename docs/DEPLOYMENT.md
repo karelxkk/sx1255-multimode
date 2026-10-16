@@ -12,8 +12,28 @@ SX1255 potřebuje I2S zvukovku s nestandardním vzorkováním **125 000 Hz** a
 samostatné I2S/SPI rozhraní. Stockový Raspberry Pi kernel 125 kHz neumí
 (stub kodeky `spdif-dir`/`spdif-dit` mají pevné sazby), takže je potřeba:
 
+### Kde vzít připravené soubory
+
+Kernel i zkompilovaný overlay jsou přiložené jako assety release
+[v1.0.0-rc4](https://github.com/karelxkk/sx1255-multimode/releases/tag/v1.0.0-rc4):
+
+- `rpi-zero2-kernel-6.18.54-myzero2+.deb`
+- `genericstereoaudiocodec.dtbo`
+
+Stažení na Pi Zero 2 W:
+
+```text
+RELEASE=https://github.com/karelxkk/sx1255-multimode/releases/download/v1.0.0-rc4
+curl -L -O "$RELEASE/rpi-zero2-kernel-6.18.54-myzero2%2B.deb"
+curl -L -O "$RELEASE/genericstereoaudiocodec.dtbo"
+```
+
+Příkaz pro vlastní překlad overlaye ze zdrojového souboru
+`genericstereoaudiocodec.dts` je uveden níže.
+
 1. **Kernel s patchem** `0001-ASoC-allow-125000-Hz-CONTINUOUS-for-sx1255_sound.patch`
-   (kořen repozitáře). Připravený balíček pro Pi Zero 2 W:
+   (kořen repozitáře). Připravený balíček pro Pi Zero 2 W je
+   `rpi-zero2-kernel-6.18.54-myzero2+.deb` z výše uvedeného release:
 
    ```text
    sudo apt install ./rpi-zero2-kernel-6.18.54-myzero2+.deb
@@ -24,14 +44,20 @@ samostatné I2S/SPI rozhraní. Stockový Raspberry Pi kernel 125 kHz neumí
    `sound/soc/codecs/spdif_receiver.c` a `spdif_transmitter.c`
    (`SNDRV_PCM_RATE_CONTINUOUS` + `rate_min`/`rate_max`).
 
-2. **Overlay `genericstereoaudiocodec`** (zdroj `genericstereoaudiocodec.dts`
-   v kořeni repozitáře; Pi je I2S slave, kodek je bit/frame master):
+2. **Overlay `genericstereoaudiocodec`** — připravený
+   `genericstereoaudiocodec.dtbo` je v release; nainstaluj ho:
+
+   ```text
+   sudo install -m 0644 genericstereoaudiocodec.dtbo \
+     /boot/firmware/overlays/genericstereoaudiocodec.dtbo
+   ```
+
+   Pi je I2S slave, kodek je bit/frame master. Při vlastním překladu použij
+   zdroj `genericstereoaudiocodec.dts`:
 
    ```text
    dtc -@ -H epapr -O dtb -o genericstereoaudiocodec.dtbo \
      -Wno-unit_address_vs_reg genericstereoaudiocodec.dts
-   sudo install -m 0644 genericstereoaudiocodec.dtbo \
-     /boot/firmware/overlays/genericstereoaudiocodec.dtbo
    ```
 
 3. **Povol rozhraní v `/boot/firmware/config.txt`** (starší obrazy používají

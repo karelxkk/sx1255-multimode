@@ -100,6 +100,14 @@ Unit testy pokrývají každou vrstvu zvlášť:
 
 - `test_dstar_detect` — validní/nevalidní D-Star sync, GMSK RF smyčka
   (modulace → diskriminátor → detektor), FM vstup a šum musí být odmítnuty.
+- `test_dstar_loopback` — D-Star TX modulátor (hlavička + DV rámce + EOT) →
+  RX detektor dekóduje identické události.
+- `test_dstar_plugin` — D-Star plugin přes falešný `ITransmit`: PTT, TX IQ,
+  drain a ukončení relace po dojezdu.
+- `test_dstar_gateway` — DSRP UDP klient: header/data round-trip proti
+  falešnému gateway procesu.
+- `test_dstar_netplugin` — síť → RF: DSRP gateway → plugin → falešný
+  `ITransmit`/arbiter.
 - `test_fm_detect` — CTCSS detekce přes Goertzel.
 - `test_m17_loopback` — M17 TX → RX dekóduje identický LSF.
 - `test_session_manager` — priority a přechody stavů.

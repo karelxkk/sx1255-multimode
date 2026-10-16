@@ -52,6 +52,16 @@ modes:
       tx_audio_lpf_hz: 3000       # TX audio low-pass
   dstar:
     enabled: true
+    callsign: OK1LBC
+    tx_preamble_bytes: 210
+    tx_tail_ms: 50
+    gateway:
+      enabled: false
+      address: 127.0.0.1
+      port: 20010
+      local_address: 127.0.0.1
+      local_port: 20011
+      name: sx1255-multimode
   m17:
     enabled: true
     callsign: N0CALL
@@ -60,6 +70,11 @@ modes:
       host: reflector.example.org
       port: 17000
       module: A
+
+# Síťový zdroj pro směr síť -> RF. "auto" znamená naposledy použitý lokální
+# mód; "dstar" umožní D-Star gateway i bez lokální D-STAR stanice.
+network:
+  mode: auto
 
 # Náhrada reálného rádia IQ souborem:
 #   frontend.type: replay   +   replay.file: capture.iq

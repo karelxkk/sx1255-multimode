@@ -56,5 +56,18 @@ int main()
     if (sessions.state() != SessionManager::State::Idle)
         return 10;
 
+    // A pinned network mode lets a gateway transmit without a local session
+    // of that mode (D-Star gateway use case).
+    sessions.setPreferredNetworkMode(Mode::DStar);
+    if (sessions.networkMode() != Mode::DStar)
+        return 11;
+    if (!sessions.acquireTx(Mode::DStar))
+        return 12;
+    if (sessions.state() != SessionManager::State::ActiveM17Network)
+        return 13;
+    sessions.releaseTx();
+    if (sessions.state() != SessionManager::State::Idle)
+        return 14;
+
     return 0;
 }

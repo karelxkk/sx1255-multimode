@@ -49,8 +49,15 @@ int main()
         "    ctcss: 88.5\n"
         "  dstar:\n"
         "    enabled: false\n"
+        "    callsign: OK1XYZ\n"
+        "    tx_tail_ms: 70\n"
+        "    gateway:\n"
+        "      enabled: true\n"
+        "      port: 20020\n"
         "  m17:\n"
-        "    enabled: true\n";
+        "    enabled: true\n"
+        "network:\n"
+        "  mode: dstar\n";
 
     const std::string path = writeTemp(yaml);
     const sx1255::Config config = sx1255::loadConfig(path);
@@ -70,8 +77,22 @@ int main()
         return 6;
     if (config.dstar.enabled)
         return 7;
+    if (config.dstar.callsign != "OK1XYZ")
+        return 11;
+    if (config.dstar.txTailMs != 70)
+        return 12;
+    if (config.dstar.txPreambleBytes != 210)
+        return 13;
+    if (!config.dstar.gateway.enabled)
+        return 14;
+    if (config.dstar.gateway.port != 20020)
+        return 15;
     if (!config.m17.enabled)
         return 8;
+    if (config.network.mode != "dstar")
+        return 16;
+    if (sx1255::parseNetworkMode(config.network.mode) != sx1255::Mode::DStar)
+        return 17;
 
     // Serialization must contain the values we just parsed.
     const std::string serialized = sx1255::serializeConfig(config);

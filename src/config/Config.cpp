@@ -288,6 +288,22 @@ Config loadConfig(const std::string& path)
 
     const YamlNode* dstar = child(*modes, "dstar");
     config.dstar.enabled = asBool(*dstar, "enabled");
+    config.dstar.callsign = optString(*dstar, "callsign", config.dstar.callsign);
+    config.dstar.txPreambleBytes = static_cast<unsigned int>(
+        optInt(*dstar, "tx_preamble_bytes", config.dstar.txPreambleBytes));
+    config.dstar.txTailMs = static_cast<unsigned int>(
+        optInt(*dstar, "tx_tail_ms", config.dstar.txTailMs));
+    if (hasKey(*dstar, "gateway")) {
+        const YamlNode* gateway = child(*dstar, "gateway");
+        config.dstar.gateway.enabled      = optBool(*gateway, "enabled", false);
+        config.dstar.gateway.address      = optString(*gateway, "address", config.dstar.gateway.address);
+        config.dstar.gateway.port         = static_cast<unsigned int>(
+            optInt(*gateway, "port", config.dstar.gateway.port));
+        config.dstar.gateway.localAddress = optString(*gateway, "local_address", config.dstar.gateway.localAddress);
+        config.dstar.gateway.localPort    = static_cast<unsigned int>(
+            optInt(*gateway, "local_port", config.dstar.gateway.localPort));
+        config.dstar.gateway.name         = optString(*gateway, "name", config.dstar.gateway.name);
+    }
 
     const YamlNode* m17 = child(*modes, "m17");
     config.m17.enabled = asBool(*m17, "enabled");
@@ -298,6 +314,11 @@ Config loadConfig(const std::string& path)
         config.m17.reflector.host     = optString(*reflector, "host", config.m17.reflector.host);
         config.m17.reflector.port     = static_cast<int>(optInt(*reflector, "port", config.m17.reflector.port));
         config.m17.reflector.module   = optString(*reflector, "module", config.m17.reflector.module);
+    }
+
+    if (hasKey(root, "network")) {
+        const YamlNode* network = child(root, "network");
+        config.network.mode = optString(*network, "mode", config.network.mode);
     }
 
     if (hasKey(root, "recording")) {
@@ -336,6 +357,14 @@ Config loadConfig(const std::string& path)
     }
 
     return config;
+}
+
+Mode parseNetworkMode(const std::string& mode)
+{
+    if (mode == "fm")    return Mode::FM;
+    if (mode == "dstar") return Mode::DStar;
+    if (mode == "m17")   return Mode::M17;
+    return Mode::Unknown;  // auto or invalid -> follow last local mode
 }
 
 std::string serializeConfig(const Config& config)
@@ -391,6 +420,16 @@ std::string serializeConfig(const Config& config)
     out << "      tx_audio_lpf_hz: " << formatDouble(config.fm.svxlink.txAudioLpfHz) << '\n';
     out << "  dstar:\n";
     out << "    enabled: " << (config.dstar.enabled ? "true" : "false") << '\n';
+    out << "    callsign: " << config.dstar.callsign << '\n';
+    out << "    tx_preamble_bytes: " << config.dstar.txPreambleBytes << '\n';
+    out << "    tx_tail_ms: " << config.dstar.txTailMs << '\n';
+    out << "    gateway:\n";
+    out << "      enabled: " << (config.dstar.gateway.enabled ? "true" : "false") << '\n';
+    out << "      address: " << config.dstar.gateway.address << '\n';
+    out << "      port: " << config.dstar.gateway.port << '\n';
+    out << "      local_address: " << config.dstar.gateway.localAddress << '\n';
+    out << "      local_port: " << config.dstar.gateway.localPort << '\n';
+    out << "      name: " << config.dstar.gateway.name << '\n';
     out << "  m17:\n";
     out << "    enabled: " << (config.m17.enabled ? "true" : "false") << '\n';
     out << "    callsign: " << config.m17.callsign << '\n';
@@ -399,6 +438,8 @@ std::string serializeConfig(const Config& config)
     out << "      host: " << config.m17.reflector.host << '\n';
     out << "      port: " << config.m17.reflector.port << '\n';
     out << "      module: " << config.m17.reflector.module << '\n';
+    out << "network:\n";
+    out << "  mode: " << config.network.mode << '\n';
     out << '\n';
 
     out << "recording:\n";

@@ -23,10 +23,35 @@ vyžadovat změnu frontend vrstvy.*
 | Režim | Stav | Detekce |
 |---|---|---|
 | FM (NFM) | plný RX→TX převaděč (bridge) | Goertzel CTCSS + hang timer + regenerace CTCSS na TX |
-| D-Star | detekční plugin | GMSK + frame sync + validace FEC hlavičky (CRC) |
+| D-Star | lokální RX→TX převaděč + DSRP gateway | GMSK demodulace + FEC hlavička + re-modulace DV rámců/EOT + DSRP síť |
 | M17 | 1:1 port z m17-gateway | 4FSK demod + sync + LSF/stream/packet dekódování |
 
 Plánované: DMR, C4FM, POCSAG, APRS, AX.25, FreeDV, Codec2 experimenty.
+
+### D-Star gateway
+
+D-Star umí kromě lokálního převaděče i DSRP protokol pro
+ircDDBGateway/DStarGateway. Povol a nastav v konfiguraci:
+
+```yaml
+modes:
+  dstar:
+    enabled: true
+    callsign: OK1LBC
+    gateway:
+      enabled: true
+      address: 127.0.0.1
+      port: 20010
+      local_address: 127.0.0.1
+      local_port: 20011
+      name: sx1255-multimode
+
+network:
+  mode: dstar    # auto | fm | dstar | m17
+```
+
+`network.mode: dstar` povolí síť → RF pro D-Star i bez lokální D-STAR
+stanice; výchozí `auto` používá naposledy použitý lokální mód.
 
 ## Požadavky na build
 
@@ -43,7 +68,8 @@ Plánované: DMR, C4FM, POCSAG, APRS, AX.25, FreeDV, Codec2 experimenty.
 - kernel s podporou I2S vzorkování **125 000 Hz** (patch
   `0001-ASoC-allow-125000-Hz-CONTINUOUS-for-sx1255_sound.patch`, balíček
   `rpi-zero2-kernel-6.18.54-myzero2+.deb`),
-- device-tree overlay `genericstereoaudiocodec` a v `config.txt`:
+- device-tree overlay `genericstereoaudiocodec` (zkompilovaný
+  `genericstereoaudiocodec.dtbo`) a v `config.txt`:
 
   ```ini
   dtparam=spi=on
@@ -52,6 +78,11 @@ Plánované: DMR, C4FM, POCSAG, APRS, AX.25, FreeDV, Codec2 experimenty.
   ```
 
 - pro `fm.backend: svxlink` navíc modul `snd-aloop`.
+
+Oba soubory (`rpi-zero2-kernel-6.18.54-myzero2+.deb` a
+`genericstereoaudiocodec.dtbo`) jsou přiložené jako assety GitHub release
+[v1.0.0-rc4](https://github.com/karelxkk/sx1255-multimode/releases/tag/v1.0.0-rc4).
+Odkazy pro stažení jsou vypsané v [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Postup instalace kernelu a overlaye viz [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
@@ -97,7 +128,7 @@ sx1255-bench       výkonnostní profil (FFT, waterfall, RX chain)
 Deb balíček pro nasazení:
 
 ```text
-scripts/build_deb.sh        # -> sx1255-multimode_1.0.0-rc3_arm64.deb
+scripts/build_deb.sh        # -> sx1255-multimode_1.0.0-rc4_arm64.deb
 ```
 
 CLI démona:
@@ -131,6 +162,7 @@ docs/                    architektura, plugin API, UML diagramy
 
 - [Architektura](docs/architecture.md)
 - [Plugin API](docs/plugin-api.md)
+- [D-Star gateway (DSRP)](docs/DSTAR_GATEWAY.md)
 - [Session Manager](docs/session-manager.md)
 - [M17 migrace z m17-gateway](docs/M17_MIGRATION.md)
 - [M17 porting report](docs/M17_PORTING_REPORT.md)

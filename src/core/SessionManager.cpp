@@ -74,6 +74,20 @@ Mode SessionManager::lastLocalMode() const
     return m_lastLocalMode;
 }
 
+Mode SessionManager::networkMode() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_preferredNetworkMode != Mode::Unknown
+        ? m_preferredNetworkMode
+        : m_lastLocalMode;
+}
+
+void SessionManager::setPreferredNetworkMode(Mode mode)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_preferredNetworkMode = mode;
+}
+
 void SessionManager::start()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -177,20 +191,24 @@ bool SessionManager::acquireTx(Mode mode)
     if (isActiveState(m_state) || m_state == State::Timeout)
         return false;
 
-    // Only the network source matching the last locally used mode may transmit
-    // back to RF.  With the default (FM) SVXLink is let through and M17/D-Star
-    // network audio stays blocked; after a local M17/D-Star session that mode's
-    // network audio is let through instead.
-    if (mode != m_lastLocalMode) {
+    // Only the network source matching the effective network mode may transmit
+    // back to RF.  With the default (auto/FM) SVXLink is let through and
+    // M17/D-Star network audio stays blocked; after a local M17/D-Star session
+    // that mode's network audio is let through instead.  A configured
+    // `network.mode` overrides this and lets a gateway be used standalone.
+    const Mode wanted = m_preferredNetworkMode != Mode::Unknown
+        ? m_preferredNetworkMode
+        : m_lastLocalMode;
+    if (mode != wanted) {
         static auto lastLog = Clock::time_point{};
         const auto now = Clock::now();
         if (now - lastLog > std::chrono::seconds(5)) {
             lastLog = now;
             std::fprintf(stderr,
-                         "ARB: network TX %s blocked (last local mode is %s)\n",
+                         "ARB: network TX %s blocked (network mode is %s)\n",
                          mode == Mode::M17 ? "M17" : (mode == Mode::DStar ? "D-Star" : "FM"),
-                         m_lastLocalMode == Mode::M17 ? "M17"
-                             : (m_lastLocalMode == Mode::DStar ? "D-Star" : "FM"));
+                         wanted == Mode::M17 ? "M17"
+                             : (wanted == Mode::DStar ? "D-Star" : "FM"));
         }
         return false;
     }

@@ -2,6 +2,33 @@
 
 Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
+## [1.0.0-rc4] — 2026-10-16
+
+### Přidáno
+
+- D-Star lokální RX→TX převaděč. Po validní FEC hlavičce je relace přidělena
+  D-Star pluginu, který re-moduluje přijatou hlavičku (RPT1/RPT2 nahradí
+  vlastním callsignem), přeposílá dekódované DV rámce a na konci vysílá
+  D-Star end-of-transmission sekvenci.
+- Nová D-Star TX DSP vrstva (`dstar::DStarTXModulator`): GMSK Gaussian
+  shaping BT=0.5, resampling 48 kSa/s → 125 kSa/s a FM modulace s vrcholovou
+  odchylkou 1200 Hz.
+- Konfigurace `modes.dstar.callsign`, `tx_preamble_bytes` a `tx_tail_ms`.
+- Unit testy `dstar_loopback` (TX IQ → RX detektor) a `dstar_plugin`
+  (plugin + falešný frontend, PTT a dojezd).
+- D-Star DSRP gateway (`dstar::DStarGatewayClient`) pro ircDDBGateway /
+  DStarGateway: síť → RF i RF → síť, keepalive registrace, watchdog a
+  telemetrie. Konfigurace `modes.dstar.gateway` a `network.mode`.
+- Unit testy `dstar_gateway` a `dstar_netplugin` (loopback UDP, gateway TX
+  cesta přes falešný frontend).
+- D-Star hotspot režim pro DCS/XLX reflektory: konfigurace
+  `modes.dstar.gateway`, volba skupiny přes `reflector=DCS019 B` a statická
+  poloha (`latitude`/`longitude`, `positionSource=fixed`).
+- Dashboard: `confidence` a `sync_confidence` se zobrazují pevným formátem
+  (6 desetinných míst), aby layout neposkakoval při exponenciálních hodnotách.
+- Dokumentace: odkazy na stažení kernelu a overlaye z GitHub release jsou
+  přímo v README a v `docs/DEPLOYMENT.md`.
+
 ## [1.0.0-rc3] — 2026-10-14
 
 ### Opraveno

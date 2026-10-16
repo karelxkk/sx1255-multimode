@@ -62,7 +62,19 @@ struct FmConfig {
 };
 
 struct DStarConfig {
-    bool enabled = true;
+    bool        enabled = true;
+    std::string callsign = "OK1LBC";
+    unsigned int txPreambleBytes = 210;
+    unsigned int txTailMs = 50;
+
+    struct Gateway {
+        bool         enabled      = false;
+        std::string  address      = "127.0.0.1";
+        unsigned int port         = 20010;
+        std::string  localAddress = "127.0.0.1";
+        unsigned int localPort    = 20011;
+        std::string  name         = "sx1255-multimode";
+    } gateway;
 };
 
 struct M17Config {
@@ -75,6 +87,14 @@ struct M17Config {
         int         port = 17000;
         std::string module = "A";
     } reflector;
+};
+
+// Preferred network source for network -> RF traffic.  "auto" keeps the
+// current behaviour (the last locally used mode wins); any other value pins
+// the source so a mode can be used without a local radio (e.g. D-Star
+// gateway).
+struct NetworkConfig {
+    std::string mode = "auto";   // "auto" | "fm" | "dstar" | "m17"
 };
 
 struct RecordingConfig {
@@ -110,6 +130,7 @@ struct Config {
     FmConfig       fm;
     DStarConfig    dstar;
     M17Config      m17;
+    NetworkConfig  network;
     RecordingConfig recording;
     ReplayConfig    replay;
     AutomaticCaptureConfig automaticCapture;
@@ -119,6 +140,11 @@ struct Config {
 // Parse the YAML-subset configuration file.  Throws std::runtime_error with a
 // line number on malformed input or missing/mistyped keys.
 Config loadConfig(const std::string& path);
+
+// Convert a network mode name to Mode.  Unknown is returned for "auto" and
+// for invalid names (callers should validate explicitly if strict parsing is
+// needed).
+Mode parseNetworkMode(const std::string& mode);
 
 // Render the configuration back to YAML (used by tests to round-trip values).
 std::string serializeConfig(const Config& config);

@@ -121,7 +121,7 @@ std::string HttpStatusServer::handleStatus()
 {
     m_stats.setRssi(m_rssiGetter());
     m_stats.setCurrentMode(SessionManager::toString(m_sessions.state()));
-    switch (m_sessions.lastLocalMode()) {
+    switch (m_sessions.networkMode()) {
         case Mode::M17:   m_stats.setNetworkMode("M17"); break;
         case Mode::DStar: m_stats.setNetworkMode("D-Star"); break;
         default:          m_stats.setNetworkMode("FM / SVXLink"); break;

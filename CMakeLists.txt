@@ -31,6 +31,8 @@ add_library(sx1255_core
     src/frontend/SX1255Hardware.cpp
     src/config/Config.cpp
     src/dstar/DStarDetector.cpp
+    src/dstar/DStarGateway.cpp
+    src/dstar/DStarTX.cpp
     src/debug/IQFileFormat.cpp
     src/debug/IQRecorder.cpp
     src/debug/IQReplay.cpp

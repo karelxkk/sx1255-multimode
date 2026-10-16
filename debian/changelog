@@ -1,3 +1,11 @@
+sx1255-multimode (1.0.0~rc4-1) unstable; urgency=medium
+
+  * D-Star local repeater, DSRP gateway and DCS/XLX hotspot support.
+  * Fixed-width confidence rendering on the web dashboard.
+  * Kernel/overlay download documentation for the release assets.
+
+ -- Karel Kadlec (OK1LBC) <xkk@post.cz>  Fri, 16 Oct 2026 00:00:00 +0000
+
 sx1255-multimode (1.0.0~rc1-1) unstable; urgency=medium
 
   * First release candidate for real-hardware deployment.

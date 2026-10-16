@@ -129,6 +129,7 @@ int main(int argc, char** argv)
 
         sx1255::SessionManager sessions;
         sessions.setStatistics(&stats);
+        sessions.setPreferredNetworkMode(sx1255::parseNetworkMode(config.network.mode));
         sx1255::IQDispatcher dispatcher(registry, sessions, nullptr);
 
         sx1255::spectrum::SpectrumAnalyzer spectrum(

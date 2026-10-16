@@ -167,6 +167,11 @@ async function refreshPlugins(){
   const list = await getJSON('/api/plugins');
   if (!list) return;
   const box = $('plugins'); box.innerHTML = '';
+  function fmtMetric(key, value){
+    if (typeof value === 'number' && key.indexOf('confidence') !== -1)
+      return value.toFixed(6);
+    return value;
+  }
   for (const p of list){
     const div = document.createElement('div');
     div.className = 'plugin' + (p.active ? ' active' : '');
@@ -176,7 +181,7 @@ async function refreshPlugins(){
       const k = Object.keys(p.telemetry);
       for (let i=0;i<k.length;i++){
         if (i) t += ', ';
-        t += k[i] + '=' + p.telemetry[k[i]];
+        t += k[i] + '=' + fmtMetric(k[i], p.telemetry[k[i]]);
       }
       t += '</small>';
     }

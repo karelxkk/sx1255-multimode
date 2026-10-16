@@ -91,6 +91,14 @@ public:
     // operator keeps hearing what they last worked.  Defaults to FM/SVXLink.
     Mode lastLocalMode() const;
 
+    // Effective network source mode: an explicitly configured preference wins,
+    // otherwise the last local mode is used.
+    Mode networkMode() const;
+
+    // Pin the network source to one mode.  Mode::Unknown restores the
+    // last-local-mode behaviour.
+    void setPreferredNetworkMode(Mode mode);
+
     static State stateForMode(Mode mode);
     static const char* toString(State state);
 
@@ -108,6 +116,7 @@ private:
     std::uint64_t           m_sessionId = 0;
     std::uint64_t           m_sessionCounter = 0;
     Mode                    m_lastLocalMode = Mode::FM;
+    Mode                    m_preferredNetworkMode = Mode::Unknown;
     std::chrono::steady_clock::time_point m_activeSince{};
     std::chrono::steady_clock::time_point m_returnSince{};
     SystemStatistics* m_stats = nullptr;

@@ -35,6 +35,19 @@ constexpr std::uint32_t kFrameSyncMask = 0x00FFFFFF;
 // DStarRepeater matches the frame sync exactly; the header CRC provides the
 // false-positive guard.
 constexpr unsigned int kFrameSyncErrs = 0;
+
+// Data sync (0x55 0x2D 0x16) and end-of-transmission pattern in the same
+// bit-order representation used by DStarRepeater's SoundCardController.
+constexpr std::uint32_t kDataSyncData = 0x00AAB468;
+constexpr std::uint32_t kDataSyncMask = 0x00FFFFFF;
+constexpr unsigned int kDataSyncErrs = 2;
+constexpr std::uint32_t kEndSyncData = 0xAAAA135E;
+constexpr std::uint32_t kEndSyncMask = 0xFFFFFFFF;
+constexpr unsigned int kEndSyncErrs = 3;
+constexpr std::array<std::uint8_t, 3> kDataSyncBytes = {0x55, 0x2D, 0x16};
+constexpr std::uint32_t kDvFrameBits = 96;
+constexpr std::uint32_t kMaxSyncBits = 50U * kDvFrameBits;
+
 constexpr std::uint32_t kFecBits = 660;
 constexpr std::size_t kFecBytes = 83;
 
@@ -296,6 +309,14 @@ void DStarDetector::reset()
     m_state = State::None;
     m_pattern = 0;
     m_headerBitsCount = 0;
+    m_headerBits.fill(0);
+    m_lastHeader = {};
+    m_dataFrame.fill(0);
+    m_dataFrameBits = 0;
+    m_dataBits = 0;
+    m_events.clear();
+    m_headerQueue.clear();
+    m_frameQueue.clear();
     m_locked = false;
     m_inc = kIncUnlock;
     m_pll = 0;
@@ -374,23 +395,107 @@ bool DStarDetector::processBit(bool bit)
         return false;
     }
 
-    // Header collection (WRITE_BIT2: LSB-first within each byte).
-    if (bit)
-        m_headerBits[m_headerBitsCount / 8] |= static_cast<std::uint8_t>(1u << (m_headerBitsCount % 8));
-    m_headerBitsCount++;
+    if (m_state == State::Header) {
+        // Header collection (WRITE_BIT2: LSB-first within each byte).
+        if (bit)
+            m_headerBits[m_headerBitsCount / 8] |= static_cast<std::uint8_t>(1u << (m_headerBitsCount % 8));
+        m_headerBitsCount++;
 
-    if (m_headerBitsCount == kFecBits) {
-        const bool valid = validateHeader();
+        if (m_headerBitsCount == kFecBits) {
+            const bool valid = validateHeader();
+            m_headerBitsCount = 0;
+            if (valid) {
+                m_frameSyncs++;
+                // Continue following the DV stream with the PLL still locked,
+                // exactly like DStarRepeater after a successful rxHeader().
+                m_dataFrame.fill(0);
+                m_dataFrameBits = 0;
+                m_dataBits = kMaxSyncBits;
+                m_state = State::Data;
+                pushEvent(DStarRxEvent::Header, &m_lastHeader);
+                return true;
+            }
+
+            m_locked = false;
+            m_inc = kIncUnlock;
+            m_state = State::None;
+        }
+        return false;
+    }
+
+    processDataBit(bit);
+    return false;
+}
+
+void DStarDetector::processDataBit(bool bit)
+{
+    // WRITE_BIT2: LSB-first within each collected byte.
+    if (m_dataFrameBits < kDvFrameBits) {
+        if (bit)
+            m_dataFrame[m_dataFrameBits / 8] |= static_cast<std::uint8_t>(1u << (m_dataFrameBits % 8));
+        m_dataFrameBits++;
+    }
+
+    // End-of-transmission marker (fuzzy, as in DStarRepeater).
+    unsigned int errs = countBits((m_pattern & kEndSyncMask) ^ kEndSyncData);
+    if (errs <= kEndSyncErrs) {
         m_locked = false;
         m_inc = kIncUnlock;
-        m_headerBitsCount = 0;
+        m_dataFrameBits = 0;
+        m_dataBits = 0;
         m_state = State::None;
-        if (valid) {
-            m_frameSyncs++;
-            return true;
+        pushEvent(DStarRxEvent::Eot);
+        return;
+    }
+
+    // Fuzzy data-sync detection once a frame is nearly complete.
+    bool syncSeen = false;
+    if (m_dataFrameBits >= (kDvFrameBits - 3U)) {
+        errs = countBits((m_pattern & kDataSyncMask) ^ kDataSyncData);
+        if (errs <= kDataSyncErrs) {
+            m_dataFrameBits = kDvFrameBits;
+            m_dataBits = kMaxSyncBits;
+            syncSeen = true;
         }
     }
-    return false;
+
+    // No data sync for too long: treat the stream as lost.
+    --m_dataBits;
+    if (m_dataBits == 0U) {
+        m_locked = false;
+        m_inc = kIncUnlock;
+        m_dataFrameBits = 0;
+        m_state = State::None;
+        pushEvent(DStarRxEvent::Lost);
+        return;
+    }
+
+    // A late data sync may start a few bits before the nominal frame boundary.
+    if (m_dataFrameBits == kDvFrameBits && !syncSeen) {
+        for (std::uint32_t i = 1; i <= 3; ++i) {
+            const std::uint32_t syncMask = kDataSyncMask >> i;
+            const std::uint32_t syncData = kDataSyncData >> i;
+            errs = countBits((m_pattern & syncMask) ^ syncData);
+            if (errs <= kDataSyncErrs) {
+                m_dataFrameBits -= i;
+                break;
+            }
+        }
+    }
+
+    if (m_dataFrameBits == kDvFrameBits) {
+        if (syncSeen) {
+            m_dataFrame[9] = kDataSyncBytes[0];
+            m_dataFrame[10] = kDataSyncBytes[1];
+            m_dataFrame[11] = kDataSyncBytes[2];
+        }
+
+        DStarFrame frame;
+        frame.bytes = m_dataFrame;
+        m_dataFrame.fill(0);
+        m_dataFrameBits = 0;
+        pushEvent(DStarRxEvent::Data, nullptr, &frame);
+    }
 }
 
 bool DStarDetector::validateHeader()
@@ -435,8 +540,12 @@ bool DStarDetector::validateHeader()
     for (int k = 0; k < 39; ++k)
         crc = static_cast<std::uint16_t>((crc >> 8) ^ kCcittTable[(crc & 0xFF) ^ header[static_cast<std::size_t>(k)]]);
     crc = static_cast<std::uint16_t>(~crc);
-    return static_cast<std::uint8_t>(crc) == header[39] &&
-           static_cast<std::uint8_t>(crc >> 8) == header[40];
+    const bool valid = static_cast<std::uint8_t>(crc) == header[39] &&
+                       static_cast<std::uint8_t>(crc >> 8) == header[40];
+    if (valid) {
+        std::copy_n(header.begin(), m_lastHeader.bytes.size(), m_lastHeader.bytes.begin());
+    }
+    return valid;
 }
 
 unsigned int DStarDetector::countBits(std::uint32_t value) const
@@ -524,6 +633,36 @@ void DStarDetector::traceBack()
 bool DStarDetector::feedBit(bool bit)
 {
     return processBit(bit);
+}
+
+void DStarDetector::pushEvent(DStarRxEvent event, const DStarHeader* header,
+                              const DStarFrame* frame)
+{
+    m_events.push_back(event);
+    if (header)
+        m_headerQueue.push_back(*header);
+    if (frame)
+        m_frameQueue.push_back(*frame);
+}
+
+bool DStarDetector::nextEvent(DStarRxEvent& event, DStarHeader* header,
+                              DStarFrame* frame)
+{
+    if (m_events.empty())
+        return false;
+
+    event = m_events.front();
+    m_events.pop_front();
+
+    if (header && event == DStarRxEvent::Header && !m_headerQueue.empty()) {
+        *header = m_headerQueue.front();
+        m_headerQueue.pop_front();
+    }
+    if (frame && event == DStarRxEvent::Data && !m_frameQueue.empty()) {
+        *frame = m_frameQueue.front();
+        m_frameQueue.pop_front();
+    }
+    return true;
 }
 
 const std::array<float, 43>& dstarGaussianTaps()

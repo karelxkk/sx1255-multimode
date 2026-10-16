@@ -40,7 +40,9 @@ Vyšší hodnota vítězí; shoda se řeší stabilním pořadím registrace.
 
 - FM — NFM diskriminátor + Goertzel na CTCSS tónu. FM detekuje jen při platném
   CTCSS.
-- D-Star — GMSK demod + korelace frame sync `0x55 0x55 0x6E 0x0A`.
+- D-Star — GMSK demod + korelace frame sync `0x55 0x55 0x6E 0x0A`, validace
+  FEC hlavičky a sledování DV rámců až po EOT; po přidělení relace re-moduluje
+  přijatá data zpět na TX (lokální převaděč).
 - M17 — 4FSK demod + korelace sync slov: LSF `0x55F7`, Stream `0xFF5D`,
   Packet `0x75FF`, EOT `0x555D`.
 

@@ -88,7 +88,7 @@ Každý plugin vrací vlastní metriky v `GET /api/plugins`:
 | Plugin | Metriky |
 |---|---|
 | FM | `ctcss_hz`, `confidence` |
-| D-Star | `sync_confidence`, `frame_count` |
+| D-Star | `sync_confidence`, `frame_count`, `tx_queue_samples`, `repeater_active`, `gateway_rx_frames`, `gateway_tx_frames` |
 | M17 | `sync_confidence`, `lsf_count`, `frame_count` |
 
 Položka `active` říká, který plugin právě vlastní kanál.
