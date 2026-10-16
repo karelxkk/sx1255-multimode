@@ -49,6 +49,8 @@ struct FmSvxlinkConfig {
     double txDevHz    = 2500.0;
     double txGain     = 1.75;     // 1:1 s sx1255-fm-repeater (TX_GAIN)
     // Audio channel shaping (NFM 12.5 kHz defaults; raise for wideband/HiFi).
+    double rxDeemphUs    = 75.0;   // RX de-emphasis time constant
+    double txPreemphUs   = 75.0;   // TX pre-emphasis time constant
     double rxAudioLpfHz  = 3000.0; // RX audio low-pass corner
     double txAudioLpfHz  = 3000.0; // TX audio low-pass corner (pre-modulation)
     // RX audio high-pass.  It removes the sub-audible CTCSS tone and the low

@@ -70,11 +70,14 @@ modes:
       rx_max_dev_hz: 2500                   # RX max. deviation (WFM: 5000)
       tx_dev_hz: 2500                       # TX max. deviation (WFM: 5000)
       tx_gain: 1.75
-      # Zvukové tvarování: NFM 12.5 kHz = 3000 Hz, WFM 25 kHz = 4500-5000 Hz.
-      # De-emfázi a pre-emfázi tady multimode neřeší - v této cestě jde audio
-      # do SVXLinku přímo z diskriminátoru a SVXLink moduluje modulátor přímo,
-      # takže je dělá SVXLink ([Rx1] DEEMPHASIS=1, [Tx1] PREEMPHASIS=1).
-      # (Backend local si je dělá sám, tam k žádnému SVXLinku není.)
+      # Zvukové tvarování: NFM 12.5 kHz = 3000 Hz / 75 us,
+      # WFM 25 kHz = cca 4500-5000 Hz a pre/de-emfáze dle normy (často 50 us).
+      # Emfázi dělá multimode, protože jen on ví o úrovňovém omezení před
+      # modulátorem: preemfáze za ořezem nezpůsobí zkreslení, kdežto uvnitř
+      # SVXLinku (PREEMPHASIS=1) špičky ořezává jeho výstup (naměřeno 0 dBFS).
+      # V SVXLinku proto patří DEEMPHASIS=0 a PREEMPHASIS=0.
+      rx_deemph_us: 75            # RX de-emfáze (WFM často 50)
+      tx_preemph_us: 75           # TX pre-emfáze (WFM často 50)
       rx_audio_lpf_hz: 3000       # RX audio LPF (WFM: 4500-5000)
       tx_audio_lpf_hz: 3000       # TX audio LPF (WFM: 4500-5000)
       # Horní propust na RX audiu odstraní subtón 88,5 Hz i nízké harmonické

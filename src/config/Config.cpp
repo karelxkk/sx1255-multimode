@@ -283,6 +283,8 @@ Config loadConfig(const std::string& path)
         config.fm.svxlink.rxMaxDevHz    = optDouble(*sx, "rx_max_dev_hz", config.fm.svxlink.rxMaxDevHz);
         config.fm.svxlink.txDevHz       = optDouble(*sx, "tx_dev_hz", config.fm.svxlink.txDevHz);
         config.fm.svxlink.txGain        = optDouble(*sx, "tx_gain", config.fm.svxlink.txGain);
+        config.fm.svxlink.rxDeemphUs    = optDouble(*sx, "rx_deemph_us", config.fm.svxlink.rxDeemphUs);
+        config.fm.svxlink.txPreemphUs   = optDouble(*sx, "tx_preemph_us", config.fm.svxlink.txPreemphUs);
         config.fm.svxlink.rxAudioLpfHz  = optDouble(*sx, "rx_audio_lpf_hz", config.fm.svxlink.rxAudioLpfHz);
         config.fm.svxlink.txAudioLpfHz  = optDouble(*sx, "tx_audio_lpf_hz", config.fm.svxlink.txAudioLpfHz);
         config.fm.svxlink.rxHighPassHz  = optDouble(*sx, "rx_highpass_hz", config.fm.svxlink.rxHighPassHz);
@@ -439,6 +441,8 @@ std::string serializeConfig(const Config& config)
     out << "      rx_max_dev_hz: " << formatDouble(config.fm.svxlink.rxMaxDevHz) << '\n';
     out << "      tx_dev_hz: " << formatDouble(config.fm.svxlink.txDevHz) << '\n';
     out << "      tx_gain: " << formatDouble(config.fm.svxlink.txGain) << '\n';
+    out << "      rx_deemph_us: " << formatDouble(config.fm.svxlink.rxDeemphUs) << '\n';
+    out << "      tx_preemph_us: " << formatDouble(config.fm.svxlink.txPreemphUs) << '\n';
     out << "      rx_audio_lpf_hz: " << formatDouble(config.fm.svxlink.rxAudioLpfHz) << '\n';
     out << "      tx_audio_lpf_hz: " << formatDouble(config.fm.svxlink.txAudioLpfHz) << '\n';
     out << "      rx_highpass_hz: " << formatDouble(config.fm.svxlink.rxHighPassHz) << '\n';

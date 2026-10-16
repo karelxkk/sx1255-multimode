@@ -28,6 +28,8 @@ struct SvxlinkBridgeConfig {
     double txGain     = 1.75;     // 1:1 with sx1255-fm-repeater TX_GAIN
     // Audio channel shaping.  Defaults are narrow-band FM (12.5 kHz) values;
     // widen `rxAudioLpHz`/`txAudioLpHz` (and the deviation) for 25 kHz wide FM.
+    double deemphTau  = 75e-6;    // RX de-emphasis time constant
+    double preemphTau = 75e-6;    // TX pre-emphasis time constant
     double rxAudioLpHz = 3000.0;  // RX audio low-pass corner
     double txAudioLpHz = 3000.0;  // TX audio low-pass corner
     // High-pass on the RX audio.  A real repeater removes the sub-audible

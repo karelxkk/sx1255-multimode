@@ -22,11 +22,8 @@ constexpr double kRfRate = 125000.0;
 // Ported from sx1255-fm-repeater (src/sx1255_repeater.c).  The SX1255 is run
 // zero-IF in this project, so the -25 kHz rotator is intentionally absent.
 // Decimation, IF filter and gain match the original; the audio low-pass
-// corners are config-driven so the channel can be tuned for narrow (12.5 kHz)
-// or wide (25 kHz) FM.  De-emphasis and pre-emphasis are deliberately absent:
-// this path hands the raw discriminator audio to SVXLink and transmits what
-// SVXLink produces, so SVXLink owns both filters ([Rx1] DEEMPHASIS, [Tx1]
-// PREEMPHASIS), which is what those settings are for.
+// corners and pre/de-emphasis time constants are now config-driven so the
+// channel can be tuned for narrow (12.5 kHz) or wide (25 kHz) FM.
 constexpr int kRxIfDecim = 5;
 constexpr int kRxIfTaps = 61;
 constexpr int kAudioFirTaps = 81;
@@ -386,6 +383,7 @@ void FmSvxlinkBridge::rxThread()
     ComplexDcBlocker dc(0.999F);   // original RX_IF DC blocker
     FirDecimator ifLpf(static_cast<float>(kRfRate), kRxIfFc);
     FmDiscriminator discriminator;
+    DeEmphasis deemph(m_config.deemphTau, static_cast<double>(m_config.audioRate));
     FirFilter audioLpf(static_cast<float>(m_config.audioRate),
                        static_cast<float>(m_config.rxAudioLpHz));
     HighPass audioHpf(static_cast<double>(m_config.audioRate), m_config.rxHighPassHz);
@@ -443,6 +441,7 @@ void FmSvxlinkBridge::rxThread()
                 break;
 
             float a = rxPrevIf + static_cast<float>(frac) * (aIf - rxPrevIf);
+            a = deemph.process(a);
             a = audioLpf.process(a);
             a = audioHpf.process(a);
             a = std::clamp(a, -1.0F, 1.0F);
@@ -506,6 +505,7 @@ void FmSvxlinkBridge::txThread()
     DcBlocker dc(0.995F);                       // original TX DC blocker
     FirFilter audioLpf(static_cast<float>(m_config.audioRate),
                        static_cast<float>(m_config.txAudioLpHz));
+    PreEmphasis preemph(m_config.preemphTau, static_cast<double>(m_config.audioRate));
     FmModulator mod(sensitivity);
 
     std::vector<std::int16_t> pcm(kAudioPeriod);
@@ -608,6 +608,7 @@ void FmSvxlinkBridge::txThread()
                     std::fwrite(&pcm[static_cast<std::size_t>(i)], sizeof(std::int16_t), 1, dumpAud);
                 x = dc.process(x);
                 x = audioLpf.process(x);
+                x = preemph.process(x);
                 x = std::clamp(x, -1.0F, 1.0F);
 
                 // Sample-and-hold 16 kHz -> 125 kHz, exactly like the original
