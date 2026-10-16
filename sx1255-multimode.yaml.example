@@ -67,6 +67,10 @@ modes:
       audio_rate: 16000
       # Deviation: NFM 12.5 kHz = 2500 Hz, WFM 25 kHz = 5000 Hz.
       # tx_dev_hz je referenční deviation, tx_gain je jemná korekce.
+      # Když vstupní stanice přemodulovává (špičky nad rx_max_dev_hz), audio
+      # se v multimode ořezává - ořez signálu s CTCSS tónem vyrábí jeho
+      # harmonické a ty je slyšet jako brum.  Řešení: zvýšit rx_max_dev_hz
+      # (hlava) a úměrně tx_gain, aby deviation na TX zůstala.
       rx_max_dev_hz: 2500                   # RX max. deviation (WFM: 5000)
       tx_dev_hz: 2500                       # TX max. deviation (WFM: 5000)
       tx_gain: 1.75
