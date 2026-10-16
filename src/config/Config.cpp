@@ -315,6 +315,8 @@ Config loadConfig(const std::string& path)
     config.m17.syncPacketThreshold = optDouble(*m17, "sync_packet_threshold", config.m17.syncPacketThreshold);
     config.m17.syncStreamThreshold = optDouble(*m17, "sync_stream_threshold", config.m17.syncStreamThreshold);
     config.m17.syncEotThreshold = optDouble(*m17, "sync_eot_threshold", config.m17.syncEotThreshold);
+    config.m17.syncLsfSyncThreshold =
+        optDouble(*m17, "sync_lsf_sync_threshold", config.m17.syncLsfSyncThreshold);
     config.m17.syncFollowThreshold = optDouble(*m17, "sync_follow_threshold", config.m17.syncFollowThreshold);
     config.m17.minSyncBurst = static_cast<int>(optInt(*m17, "min_sync_burst", config.m17.minSyncBurst));
     config.m17.idleTimeoutMs = static_cast<int>(optInt(*m17, "idle_timeout_ms", config.m17.idleTimeoutMs));
@@ -461,6 +463,7 @@ std::string serializeConfig(const Config& config)
     out << "    sync_packet_threshold: " << config.m17.syncPacketThreshold << '\n';
     out << "    sync_stream_threshold: " << config.m17.syncStreamThreshold << '\n';
     out << "    sync_eot_threshold: " << config.m17.syncEotThreshold << '\n';
+    out << "    sync_lsf_sync_threshold: " << config.m17.syncLsfSyncThreshold << '\n';
     out << "    sync_follow_threshold: " << config.m17.syncFollowThreshold << '\n';
     out << "    min_sync_burst: " << config.m17.minSyncBurst << '\n';
     out << "    idle_timeout_ms: " << config.m17.idleTimeoutMs << '\n';

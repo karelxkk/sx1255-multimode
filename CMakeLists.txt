@@ -74,6 +74,10 @@ add_executable(sx1255-fp-audit src/tools/fp_audit.cpp)
 target_link_libraries(sx1255-fp-audit PRIVATE sx1255_core)
 
 enable_testing()
+
+# Offline analysis helper for recorded IQ files (not installed).
+add_executable(m17_rx_dump tools/m17_rx_dump.cpp)
+target_link_libraries(m17_rx_dump PRIVATE sx1255_core)
 add_subdirectory(tests)
 
 # ---------------------------------------------------------------------------

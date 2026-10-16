@@ -9,7 +9,7 @@ namespace sx1255::m17 {
 
 SyncMetrics syncMetrics(const std::vector<Symbol>& symbols, int offset, int sps)
 {
-    double lsf = 0, pkt = 0, pkte = 0, pkta = 0, pktb = 0;
+    double lsf = 0, lsfOnly = 0, pkt = 0, pkte = 0, pkta = 0, pktb = 0;
     double str = 0, stre = 0, stra = 0, strb = 0, eote = 0, eot = 0;
 
     const int frameStride = static_cast<int>(SymbolsPerFrame) * sps;
@@ -27,6 +27,8 @@ SyncMetrics syncMetrics(const std::vector<Symbol>& symbols, int offset, int sps)
                 stra += ds * ds;
                 const double dp = v - PacketSyncSymbols[static_cast<std::size_t>(sym - 8)];
                 pkta += dp * dp;
+                const double dl2 = v - LSFSyncSymbols[static_cast<std::size_t>(sym - 8)];
+                lsfOnly += dl2 * dl2;
             }
         }
     }
@@ -62,8 +64,26 @@ SyncMetrics syncMetrics(const std::vector<Symbol>& symbols, int offset, int sps)
     metrics.eotPair = static_cast<float>(eot);
     metrics.packetOnly = static_cast<float>(std::sqrt(pkta));
     metrics.streamOnly = static_cast<float>(std::sqrt(stra));
+    metrics.lsfOnly = static_cast<float>(std::sqrt(lsfOnly));
     return metrics;
 }
+
+namespace {
+
+// syncWordDistance is the metric that identifies a burst of this type by its
+// sync word alone.  The payload only depends on where the sync word sits, so
+// this is also the metric used to fine-tune the sampling offset.
+float syncWordDistance(const SyncMetrics& m, std::uint16_t typ)
+{
+    switch (typ) {
+        case LSFSync:    return m.lsfOnly;
+        case PacketSync: return m.packetOnly;
+        case StreamSync: return m.streamOnly;
+        default:         return m.eotPair;
+    }
+}
+
+}  // namespace
 
 std::pair<float, std::uint16_t> syncDistance(const std::vector<Symbol>& symbols,
                                              int offset, int sps)
@@ -104,8 +124,8 @@ void M17Synchronizer::extractPayload(float dist, std::uint16_t typ)
 {
     int offset = 0;
     for (int i = 0; i < m_sps / 2; ++i) {
-        const auto [d, t] = syncDistance(m_symbols, i + 1, m_sps);
-        if (t == typ && d < dist) {
+        const float d = syncWordDistance(syncMetrics(m_symbols, i + 1, m_sps), typ);
+        if (d < dist) {
             dist = d;
             offset = i + 1;
         }
@@ -173,6 +193,14 @@ void M17Synchronizer::push(float sample)
         typ = PacketSync;
         dist = metrics.packetOnly;
         m_lastFollow = true;
+    }
+
+    // A header whose preamble was not repeated: the LSF sync word alone decides.
+    // Radios that retry a packet send the header without the preamble again,
+    // and without this the frames were heard while the message had no header.
+    if (typ == 0 && metrics.lsfOnly < m_thresholds.lsfSync) {
+        typ = LSFSync;
+        dist = metrics.lsfOnly;
     }
 
     if (typ == 0) {

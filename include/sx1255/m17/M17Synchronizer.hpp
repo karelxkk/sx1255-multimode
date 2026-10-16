@@ -18,6 +18,10 @@ struct SyncThresholds {
     float packet = 5.0F;
     float stream = 5.0F;
     float eot = 4.5F;
+    // The LSF sync word alone, used for transmissions that do not repeat the
+    // preamble (a radio retrying a packet sends the header without it, and the
+    // frames were heard while the header was not).
+    float lsfSync = 4.5F;
     // Single-sync-word threshold used while a transmission is already running
     // (see setExpectedType).  A real frame matches its sync word at ~3, so 4.5
     // keeps a margin while staying far below the ~9 of a non-match.
@@ -37,6 +41,7 @@ struct SyncMetrics {
     float eotPair = 0.0F;     // 16 symbols: EOT pattern, repeated
     float packetOnly = 0.0F;  // 8 symbols: packet sync word alone
     float streamOnly = 0.0F;  // 8 symbols: stream sync word alone
+    float lsfOnly = 0.0F;     // 8 symbols: LSF sync word alone, no preamble
 };
 
 SyncMetrics syncMetrics(const std::vector<Symbol>& symbols, int offset, int sps);

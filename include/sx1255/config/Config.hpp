@@ -92,6 +92,10 @@ struct M17Config {
     double syncPacketThreshold = 5.0;   // packet sync word + the next frame
     double syncStreamThreshold = 5.0;   // stream sync word + the next frame
     double syncEotThreshold    = 4.5;   // end-of-transmission marker
+    // The LSF sync word alone (without the preamble).  A radio retrying a
+    // packet sends its header without the preamble again; the frames were
+    // heard, the header was not, and the message could not be routed.
+    double syncLsfSyncThreshold = 4.5;
     double syncFollowThreshold = 4.5;   // sync word alone, inside a transmission
     // Sync bursts needed inside 500 ms before M17 is *declared* (a valid LSF
     // is always trusted immediately).  Detection only decides who owns the

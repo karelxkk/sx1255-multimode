@@ -131,6 +131,26 @@ std::vector<std::uint8_t> extractLICH(int lichCnt, const LSF& lsf)
     return lich;
 }
 
+// plausibleCallsign keeps a decoded header with a valid CRC but nonsense in it
+// from steering the receiver: a false sync word can pass the CRC by accident
+// (1 in 65536), the callsign fields almost never look like a callsign.
+bool plausibleCallsign(const std::string& cs)
+{
+    if (cs.size() < 3 || cs.size() > 9)
+        return false;
+    bool letter = false;
+    for (const char c : cs) {
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))
+            letter = true;
+        else if ((c >= '0' && c <= '9') || c == ' ' || c == '-' || c == '/' ||
+                 c == '.' || c == '@' || c == '#')
+            continue;
+        else
+            return false;
+    }
+    return letter;
+}
+
 }  // namespace
 
 std::uint16_t crc16(const std::uint8_t* data, std::size_t len)
@@ -836,7 +856,8 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
         // stream or packet: a carrier that dropped without an EOT used to
         // swallow every following transmission, packets included.
         auto [lsf, e] = decodeLSF(softBits);
-        if (!lsf.checkCRC()) {
+        if (!lsf.checkCRC() || !plausibleCallsign(lsf.srcCallsign()) ||
+            !plausibleCallsign(lsf.dstCallsign())) {
             m_counters.lsfBadCRC++;
             if (m_cb.onLSFBadCRC)
                 m_cb.onLSFBadCRC(lsf, static_cast<double>(e) / 3.68);
@@ -1039,6 +1060,8 @@ void Decoder::clearPacketAssembly()
 void Decoder::handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int errors, bool lastFrame)
 {
     std::uint8_t field = static_cast<std::uint8_t>((pktFrame[25] >> 2) & 0x1F);
+    if (m_cb.onPacketFrame)
+        m_cb.onPacketFrame(field, lastFrame, errors);
 
     if (!lastFrame) {
         if (field > 32) {

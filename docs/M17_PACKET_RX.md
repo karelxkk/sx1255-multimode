@@ -49,6 +49,13 @@ packet, který přijde během relace FM/D-Star.
   třikrát). Rámce se ukládají podle čísla rámce a pro každé číslo vyhrává kopie
   s nejmenším počtem chyb, takže chybějící nebo poškozený rámec z prvního
   pokusu doplní druhý či třetí – místo aby celá zpráva propadla.
+- **Hlavička i bez preamble.** U opakovaného pokusu rádio neposílá preamble
+  znovu, takže se hlavička hledá i podle samotného LSF sync slova
+  (`sync_lsf_sync_threshold`). Bez toho byly rámce slyšet výborně, ale zpráva
+  neměla hlavičku a nedala se zařadit.
+- Vzorkovací fáze se doladí podle stejné metriky, kterou byl burst rozpoznán
+  (dřív se u rámců uvnitř přenosu hledání fáze míjelo účinkem, což zvyšovalo
+  chybovost).
 - Stejná zpráva doručená z dalšího pokusu se neposílá znovu: počítá se jako
   `packets_duplicate`, takže z APRS-IS není tři kopie jedné SMS.
 - Délka zprávy se neurčuje podle čísla posledního rámce (to může být v šumu
@@ -110,6 +117,7 @@ m17:
   sync_packet_threshold: 5.0   # packet sync + následující rámec
   sync_stream_threshold: 5.0   # stream sync + následující rámec
   sync_eot_threshold: 4.5      # značka konce přenosu
+  sync_lsf_sync_threshold: 4.5 # samotné LSF sync slovo (bez preamble)
   sync_follow_threshold: 4.5   # samotný packet sync uvnitř packet přenosu
   min_sync_burst: 5            # kolik synců v 500 ms vyhlásí M17 jako mód
   idle_timeout_ms: 1500        # konec relace po tichu

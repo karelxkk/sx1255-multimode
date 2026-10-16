@@ -122,6 +122,10 @@ public:
         // A packet frame arrived after the transmission state was lost, but the
         // recent packet LSF was still known, so the frame was re-attached to it.
         std::function<void(const LSF&)> onPacketReattached;
+        // Every packet frame that was decoded, with the metadata it carried.
+        // Diagnostics: it shows how a radio numbers its frames and how good
+        // each copy was.
+        std::function<void(std::uint8_t field, bool lastFrame, int errors)> onPacketFrame;
     };
 
     // Frame level counters, surfaced through the plugin telemetry so an

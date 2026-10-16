@@ -100,6 +100,8 @@ modes:
     sync_packet_threshold: 5.0   # packet sync + následující rámec
     sync_stream_threshold: 5.0   # stream sync + následující rámec
     sync_eot_threshold: 4.5      # značka konce přenosu
+    sync_lsf_sync_threshold: 4.5 # samotné LSF sync slovo (opakovaný pokus rádia
+                                 # neposílá preamble znovu)
     sync_follow_threshold: 4.5   # samotný packet sync uvnitř packet přenosu
     # Počet sync burstů v 500 ms, po kterém se M17 vyhlásí jako aktivní mód.
     # Slouží jen k rozhodnutí, kdo vlastní kanál - dekódování packetů na tom

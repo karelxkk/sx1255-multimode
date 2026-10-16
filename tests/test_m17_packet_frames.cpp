@@ -184,6 +184,16 @@ int main()
         failures += check("two frames without EOT", r, 1, text.c_str()) ? 0 : 1;
     }
 
+    {   // A retry whose header has no preamble: only the LSF sync word is
+        // transmitted, so the 16-symbol window cannot match.  The frames are
+        // heard perfectly, so the message must still arrive.
+        std::vector<Symbol> syms = packetSymbols("Bez preambule");
+        for (std::size_t i = 0; i < SymbolsPerFrame; ++i)
+            syms[i] = PacketSyncSymbols[i % PacketSyncSymbols.size()];
+        const Results r = runRX(concat(std::move(syms), filler(600)));
+        failures += check("header without preamble", r, 1, "Bez preambule") ? 0 : 1;
+    }
+
     if (failures != 0)
         std::printf("%d scenario(s) failed\n", failures);
     return failures == 0 ? 0 : 1;

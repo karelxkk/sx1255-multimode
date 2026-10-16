@@ -34,6 +34,7 @@ m17::SyncThresholds syncThresholds(const M17Config& config)
     t.packet = static_cast<float>(config.syncPacketThreshold);
     t.stream = static_cast<float>(config.syncStreamThreshold);
     t.eot    = static_cast<float>(config.syncEotThreshold);
+    t.lsfSync = static_cast<float>(config.syncLsfSyncThreshold);
     t.follow = static_cast<float>(config.syncFollowThreshold);
     return t;
 }
@@ -191,6 +192,12 @@ public:
                   std::fprintf(stderr,
                                "M17 RF->NET: frame re-attached to the previous packet LSF (%s>%s)\n",
                                lsf.srcCallsign().c_str(), lsf.dstCallsign().c_str());
+              },
+              [this](std::uint8_t field, bool lastFrame, int errors) {   // onPacketFrame
+                  if (!m_m17Config.logSync)
+                      return;
+                  std::fprintf(stderr, "M17 packet frame: %s=%u errors=%d\n",
+                               lastFrame ? "bytes" : "frame", field, errors);
               }})
         , m_m17Config(std::move(config))
         , m_stats(stats)
