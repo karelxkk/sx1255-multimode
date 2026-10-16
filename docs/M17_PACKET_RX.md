@@ -45,6 +45,15 @@ packet, který přijde během relace FM/D-Star.
 - Poslední packet LSF se drží ještě chvíli (64 rámců): pokud se stav mezitím
   ztratí, rámce se k němu přidruží a rozhodne až CRC payloadu. Po tichu na
   kanálu se držení uvolní, aby se hlavička nepřiřadila k něčemu vzdálenému.
+- **Opakované pokusy se kombinují.** Rádio posílá zprávu víckrát (u OpenRTX
+  třikrát). Rámce se ukládají podle čísla rámce a pro každé číslo vyhrává kopie
+  s nejmenším počtem chyb, takže chybějící nebo poškozený rámec z prvního
+  pokusu doplní druhý či třetí – místo aby celá zpráva propadla.
+- Stejná zpráva doručená z dalšího pokusu se neposílá znovu: počítá se jako
+  `packets_duplicate`, takže z APRS-IS není tři kopie jedné SMS.
+- Délka zprávy se neurčuje podle čísla posledního rámce (to může být v šumu
+  přečtené špatně), ale tak, že se zkusí všechny přípustné délky a rozhodne CRC
+  payloadu.
 - Synchronizátor se při startu ani konci relace nevymazává.
 - Koncovou značku bere dekodér vážně jen ve chvíli, kdy je synchronizovaný; jinak
   ji ignoruje a relaci neukončí.
@@ -83,6 +92,8 @@ M17 NET RX: 1 packet(s) expired after 2000 ms without a free channel
 | `packets_bad_crc` | packet s chybným CRC (nedoručen, zalogován) |
 | `frames_dropped` | rámce, které nešlo použít (bez LSF apod.) |
 | `frames_reattached` | rámce přidružené k nedávné hlavičce po ztrátě stavu |
+| `frames_improved` | rámce nahrazené lepší kopií z dalšího pokusu |
+| `packets_duplicate` | opakované pokusy o již doručenou zprávu |
 | `rf_packets`, `rf_packets_forwarded`, `rf_packets_not_forwarded` | kolik packetů z RF přišlo a kolik se jich poslalo do sítě |
 | `net_packets_queued`, `net_packets_sent`, `net_packets_dropped`, `net_packets_pending` | fronta směru síť → RF |
 

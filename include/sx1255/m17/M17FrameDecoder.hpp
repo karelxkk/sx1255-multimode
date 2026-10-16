@@ -135,6 +135,8 @@ public:
         std::uint64_t packetFrames = 0;    // packet frames written into the buffer
         std::uint64_t framesDropped = 0;   // sync bursts that could not be used
         std::uint64_t reattached = 0;      // frames re-attached to a recent LSF
+        std::uint64_t duplicates = 0;      // repeated attempts of a delivered packet
+        std::uint64_t framesImproved = 0;  // frames replaced by a better copy
     };
 
     explicit Decoder(Callbacks callbacks);
@@ -164,6 +166,13 @@ private:
     void finishStream();
     // dropFrame reports a sync burst that could not be turned into data.
     void dropFrame(std::uint16_t typ, const char* reason);
+    // Packet assembly.  Frames are kept per frame number and the best copy of
+    // each one wins, so the repeated attempts a radio sends are combined into
+    // one message instead of each attempt being thrown away on its own.
+    void startPacketAssembly(const LSF& lsf);
+    void clearPacketAssembly();
+    void handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int errors, bool lastFrame);
+    bool completePacket(std::vector<std::uint8_t>& payload);
 
     Callbacks m_cb;
     std::uint16_t m_syncedType = 0;
@@ -186,9 +195,20 @@ private:
     // (spurious end marker, missed header of the next attempt).
     std::optional<LSF> m_lastPacketLsf;
     int m_lastPacketLsfAge = 0;
+    std::vector<int> m_packetFrameErrors;   // per frame number, -1 = not received
+    std::vector<std::uint8_t> m_lastChunk;  // the last frame, whose field is a byte count
+    std::uint8_t m_lastChunkLen = 0;
+    int m_lastChunkErrors = -1;
+    // Duplicate suppression: the second and third attempt of the same message
+    // must not become a second and third APRS message.
+    std::vector<std::uint8_t> m_lastDelivered;
+    LSF m_lastDeliveredLsf{};
+    bool m_haveLastDelivered = false;
+    int m_framesSinceDelivery = 0;
     Counters m_counters{};
 
     static constexpr int kLsfRetentionFrames = 64;
+    static constexpr int kDuplicateFrames = 200;
 };
 
 }  // namespace sx1255::m17

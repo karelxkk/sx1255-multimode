@@ -411,6 +411,8 @@ public:
         t.metrics["packets_bad_crc"] = static_cast<double>(counters.packetsBadCRC);
         t.metrics["frames_dropped"] = static_cast<double>(m_framesDropped);
         t.metrics["frames_reattached"] = static_cast<double>(counters.reattached);
+        t.metrics["frames_improved"] = static_cast<double>(counters.framesImproved);
+        t.metrics["packets_duplicate"] = static_cast<double>(counters.duplicates);
         t.metrics["rf_packets"] = static_cast<double>(m_rfPackets);
         t.metrics["rf_packets_forwarded"] = static_cast<double>(m_rfPacketsForwarded);
         t.metrics["rf_packets_not_forwarded"] = static_cast<double>(m_rfPacketsNotForwarded);

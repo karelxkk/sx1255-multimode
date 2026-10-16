@@ -867,9 +867,16 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
             m_streamFN = 0;
             m_streamID = static_cast<std::uint16_t>(m_streamCounter++);
             m_lastPacketLsf.reset();
+            clearPacketAssembly();
         } else {
             m_syncedType = PacketSync;
-            m_packetData.assign(33 * 25, 0);
+            // Another attempt of the same message keeps the frames received so
+            // far; anything else starts a fresh assembly.
+            const bool sameMessage = m_lastPacketLsf &&
+                m_lastPacketLsf->src == lsf.src && m_lastPacketLsf->dst == lsf.dst &&
+                m_lastPacketLsf->type == lsf.type;
+            if (!sameMessage)
+                clearPacketAssembly();
             m_lastPacketLsf = lsf;
             m_lastPacketLsfAge = 0;
         }
@@ -888,7 +895,6 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
                 m_lsf = *m_lastPacketLsf;
                 m_gotLSF = true;
                 m_syncedType = PacketSync;
-                m_packetData.assign(33 * 25, 0);
                 m_lastPacketFN = 0xff;
                 m_errors = 0;
                 m_bits = 368;
@@ -905,57 +911,11 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
         auto [pktFrame, e] = decodePacketFrame(softBits);
         m_errors += e;
         m_bits += 368;
+        ++m_framesSinceDelivery;
+        ++m_counters.packetFrames;
 
         const bool lastFrame = (pktFrame[25] >> 7) != 0;
-        std::uint8_t frameNumOrByteCnt = static_cast<std::uint8_t>((pktFrame[25] >> 2) & 0x1F);
-        if (lastFrame && frameNumOrByteCnt > 25)
-            frameNumOrByteCnt = 25;
-
-        if (!lastFrame) {
-            // A non-last frame carries its frame number, so a frame that
-            // arrives out of order (or after a damaged one) still lands at
-            // the right offset instead of being thrown away.  The old code
-            // required frameNum == lastPacketFN + 1, which discarded every
-            // frame of a packet with more than one frame.
-            const std::size_t start = static_cast<std::size_t>(frameNumOrByteCnt) * 25;
-            if (start + 25 > m_packetData.size()) {
-                dropFrame(typ, "packet frame number out of range");
-                return;
-            }
-            std::copy_n(pktFrame.begin(), 25,
-                        m_packetData.begin() + static_cast<std::ptrdiff_t>(start));
-            if (m_lastPacketFN == 0xff || frameNumOrByteCnt > m_lastPacketFN)
-                m_lastPacketFN = frameNumOrByteCnt;
-            m_counters.packetFrames++;
-            return;
-        }
-
-        // Last frame: the field is the byte count of this final chunk, which
-        // follows the highest frame number seen so far.
-        const std::uint8_t nextFrame = (m_lastPacketFN == 0xff)
-            ? 0
-            : static_cast<std::uint8_t>(m_lastPacketFN + 1);
-        const std::size_t start = static_cast<std::size_t>(nextFrame) * 25;
-        if (start >= m_packetData.size()) {
-            dropFrame(typ, "packet too long for the reassembly buffer");
-            reset();
-            return;
-        }
-        const std::size_t end = std::min(start + frameNumOrByteCnt, m_packetData.size());
-        std::copy_n(pktFrame.begin(), end - start,
-                    m_packetData.begin() + static_cast<std::ptrdiff_t>(start));
-        m_packetData.resize(end);
-        m_counters.packetFrames++;
-        if (crc16(m_packetData.data(), m_packetData.size()) == 0) {
-            m_counters.packets++;
-            if (m_cb.onPacket)
-                m_cb.onPacket(*m_lsf, m_packetData, ber());
-        } else {
-            m_counters.packetsBadCRC++;
-            if (m_cb.onPacketBadCRC)
-                m_cb.onPacketBadCRC(*m_lsf, m_packetData, ber());
-        }
-        reset();
+        handlePacketFrame(pktFrame, e, lastFrame);
         return;
     }
 
@@ -1058,6 +1018,120 @@ void Decoder::expireRetention()
 {
     m_lastPacketLsf.reset();
     m_lastPacketLsfAge = kLsfRetentionFrames + 1;
+    clearPacketAssembly();
+}
+
+void Decoder::clearPacketAssembly()
+{
+    m_packetData.assign(33 * 25, 0);
+    m_packetFrameErrors.assign(33, -1);
+    m_lastChunk.assign(25, 0);
+    m_lastChunkLen = 0;
+    m_lastChunkErrors = -1;
+    m_lastPacketFN = 0xff;
+}
+
+// handlePacketFrame stores one received packet frame - the copy with fewer
+// channel bit errors wins - and tries to complete the message.  Frames of the
+// same message from another attempt land on the same frame number, so a radio
+// that repeats a packet three times gives three chances per frame instead of
+// the message being lost with the first attempt that has a bad frame.
+void Decoder::handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int errors, bool lastFrame)
+{
+    std::uint8_t field = static_cast<std::uint8_t>((pktFrame[25] >> 2) & 0x1F);
+
+    if (!lastFrame) {
+        if (field > 32) {
+            dropFrame(PacketSync, "packet frame number out of range");
+            return;
+        }
+        if (m_packetFrameErrors[field] >= 0 && errors >= m_packetFrameErrors[field])
+            return;   // we already have a copy at least as good
+        if (m_packetFrameErrors[field] >= 0)
+            ++m_counters.framesImproved;
+        std::copy_n(pktFrame.begin(), 25,
+                    m_packetData.begin() + static_cast<std::ptrdiff_t>(field) * 25);
+        m_packetFrameErrors[field] = errors;
+        if (m_lastPacketFN == 0xff || field > m_lastPacketFN)
+            m_lastPacketFN = field;
+        return;
+    }
+
+    // The last frame's field is the number of bytes in this final chunk.
+    if (field > 25)
+        field = 25;
+    if (m_lastChunkErrors < 0 || errors < m_lastChunkErrors) {
+        if (m_lastChunkErrors >= 0)
+            ++m_counters.framesImproved;
+        std::copy_n(pktFrame.begin(), field, m_lastChunk.begin());
+        m_lastChunkLen = field;
+        m_lastChunkErrors = errors;
+    }
+
+    // Always try to complete: a later attempt may have filled the frames that
+    // were missing, even when this final chunk is not a better copy.
+    std::vector<std::uint8_t> payload;
+    if (!completePacket(payload)) {
+        // Nothing is thrown away: the frames stay for the next attempt, which
+        // will fill the holes with better copies.
+        if (m_cb.onPacketBadCRC)
+            m_cb.onPacketBadCRC(*m_lsf, payload, ber());
+        return;
+    }
+
+    const bool sameAsLast = m_haveLastDelivered && m_framesSinceDelivery < kDuplicateFrames &&
+        payload == m_lastDelivered && m_lsf &&
+        m_lastDeliveredLsf.src == m_lsf->src && m_lastDeliveredLsf.dst == m_lsf->dst &&
+        m_lastDeliveredLsf.type == m_lsf->type;
+    if (sameAsLast) {
+        // The second and third attempt of the same message.
+        ++m_counters.duplicates;
+        clearPacketAssembly();
+        return;
+    }
+
+    m_lastDelivered = payload;
+    if (m_lsf)
+        m_lastDeliveredLsf = *m_lsf;
+    m_haveLastDelivered = true;
+    m_framesSinceDelivery = 0;
+    ++m_counters.packets;
+    clearPacketAssembly();
+    if (m_cb.onPacket)
+        m_cb.onPacket(*m_lsf, payload, ber());
+}
+
+// completePacket assembles the message from the frames received so far: the
+// frames must be present from number 0 without holes and the final chunk
+// follows them.  The payload CRC decides which length is the right one, so a
+// damaged frame number cannot steer the assembly into a bogus layout.
+bool Decoder::completePacket(std::vector<std::uint8_t>& payload)
+{
+    payload.clear();
+    if (m_lastChunkErrors < 0)
+        return false;
+
+    // Frames are filled from number 0; a hole means that this and any longer
+    // candidate cannot be complete.  The candidate length is k frames plus the
+    // byte count of the final chunk.
+    for (std::uint8_t k = 0; k <= 32; ++k) {
+        if (k > 0 && m_packetFrameErrors[k - 1] < 0)
+            break;
+
+        std::vector<std::uint8_t> candidate;
+        candidate.reserve(static_cast<std::size_t>(k) * 25 + m_lastChunkLen);
+        candidate.insert(candidate.end(), m_packetData.begin(),
+                         m_packetData.begin() + static_cast<std::ptrdiff_t>(k) * 25);
+        candidate.insert(candidate.end(), m_lastChunk.begin(),
+                         m_lastChunk.begin() + static_cast<std::ptrdiff_t>(m_lastChunkLen));
+        payload = std::move(candidate);
+        if (crc16(payload.data(), payload.size()) == 0)
+            return true;
+    }
+    // Nothing matched the CRC: the frames stay for the next attempt and the
+    // caller reports the longest candidate that was tried.
+    ++m_counters.packetsBadCRC;
+    return false;
 }
 
 void Decoder::reset()

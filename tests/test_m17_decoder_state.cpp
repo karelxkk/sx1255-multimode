@@ -56,6 +56,7 @@ struct Log {
     int packets = 0;
     int dropped = 0;
     int reattached = 0;
+    int duplicates = 0;
     std::vector<std::uint8_t> lastPayload;
 };
 
@@ -69,6 +70,14 @@ Decoder makeDecoder(Log& log)
     cb.onFrameDropped = [&](std::uint16_t, const char*) { ++log.dropped; };
     cb.onPacketReattached = [&](const LSF&) { ++log.reattached; };
     return Decoder(std::move(cb));
+}
+
+// corrupt flips every n-th soft bit, which is what a marginal signal does.
+std::vector<SoftBit> corrupt(std::vector<SoftBit> bits, std::size_t every)
+{
+    for (std::size_t i = 0; i < bits.size(); i += every)
+        bits[i] = (bits[i] == SoftFalse) ? SoftTrue : SoftFalse;
+    return bits;
 }
 
 bool delivered(const Log& log, const std::string& text)
@@ -160,16 +169,55 @@ int main()
         }
     }
 
-    {   // A second transmission with a fresh header still decodes.
+    {   // The three attempts a radio sends are one message, not three.
         Log log;
         Decoder decoder = makeDecoder(log);
         const Sections s = sections(shortText);
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            decoder.decodeFrame(LSFSync, s.lsf);
+            for (const auto& frame : s.frames)
+                decoder.decodeFrame(PacketSync, frame);
+        }
+        if (log.packets != 1 || decoder.counters().duplicates != 2) {
+            std::printf("repeats: FAIL (packets %d, duplicates %llu)\n", log.packets,
+                        static_cast<unsigned long long>(decoder.counters().duplicates));
+            ++failures;
+        }
+    }
+
+    {   // The middle frame is lost in the first attempt and arrives with the
+        // second one; the message must still come out.
+        Log log;
+        Decoder decoder = makeDecoder(log);
+        const Sections s = sections(longText);
         decoder.decodeFrame(LSFSync, s.lsf);
         decoder.decodeFrame(PacketSync, s.frames[0]);
+        decoder.decodeFrame(PacketSync, s.frames[2]);
+        decoder.decodeFrame(LSFSync, s.lsf);
+        for (const auto& frame : s.frames)
+            decoder.decodeFrame(PacketSync, frame);
+        if (!delivered(log, longText)) {
+            std::printf("missing frame: FAIL (packets %d, bad crc %llu)\n", log.packets,
+                        static_cast<unsigned long long>(decoder.counters().packetsBadCRC));
+            ++failures;
+        }
+    }
+
+    {   // The middle frame is damaged in the first attempt; the second attempt
+        // brings a clean copy of the very same frame.
+        Log log;
+        Decoder decoder = makeDecoder(log);
+        const Sections s = sections(longText);
         decoder.decodeFrame(LSFSync, s.lsf);
         decoder.decodeFrame(PacketSync, s.frames[0]);
-        if (log.packets != 2) {
-            std::printf("repeat: FAIL (packets %d, want 2)\n", log.packets);
+        decoder.decodeFrame(PacketSync, corrupt(s.frames[1], 5));
+        decoder.decodeFrame(PacketSync, s.frames[2]);
+        decoder.decodeFrame(LSFSync, s.lsf);
+        for (const auto& frame : s.frames)
+            decoder.decodeFrame(PacketSync, frame);
+        if (!delivered(log, longText)) {
+            std::printf("repaired frame: FAIL (packets %d, improved %llu)\n", log.packets,
+                        static_cast<unsigned long long>(decoder.counters().framesImproved));
             ++failures;
         }
     }
