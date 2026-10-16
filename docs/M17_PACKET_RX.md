@@ -65,8 +65,8 @@ packet, který přijde během relace FM/D-Star.
 - Koncovou značku bere dekodér vážně jen ve chvíli, kdy je synchronizovaný; jinak
   ji ignoruje a relaci neukončí.
 - Uvnitř packet přenosu stačí na rozpoznání rámce jediný sync (`sync_follow_threshold`).
-- M17 se dekóduje i během relace jiného módu (`decode_during_other_sessions`) – packet
-  se neztratí kvůli hang time FM nebo D-Star.
+- Dispečer pouští M17 i během relace jiného módu, takže packet se neztratí
+  kvůli hang time FM nebo D-Star.
 - Packety ze sítě čekají na volný kanál ve frontě (`network_packet_queue`,
   `network_packet_ttl_ms`); zahodí se jen po vypršení TTL, a to s hláškou.
 - Arbitráž vysílače rozlišuje audio a data: packet se rezervuje přes
@@ -121,7 +121,6 @@ m17:
   sync_follow_threshold: 4.5   # samotný packet sync uvnitř packet přenosu
   min_sync_burst: 5            # kolik synců v 500 ms vyhlásí M17 jako mód
   idle_timeout_ms: 1500        # konec relace po tichu
-  decode_during_other_sessions: true
   network_packet_queue: 8
   network_packet_ttl_ms: 2000
 ```
@@ -134,8 +133,6 @@ skutečných přenosů, takže se ztrácely celé zprávy, když byla slabá jen
 
 - `min_sync_burst` ovlivňuje jen to, kdo dostane kanál. Dekódování packetů na něm
   nezávisí, takže krátká SMS se neztratí ani při vysoké hodnotě.
-- `decode_during_other_sessions: false` vrátí původní chování (M17 spí, když má
-  kanál jiný mód); použij, jen kdyby na Pi Zero nestačil výkon.
 - Prahy zvyšuj po malých krocích (např. o 0,5) – čím vyšší, tím víc falešných
   synců v šumu.
 

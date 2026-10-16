@@ -115,10 +115,6 @@ struct M17Config {
     int    minSyncBurst = 5;
     // End the M17 session when nothing valid was received for this long.
     int    idleTimeoutMs = 1500;
-    // Keep decoding M17 while another mode owns the session, so a packet that
-    // arrives during an FM/D-Star session (or their hang time) still reaches
-    // the network.
-    bool   decodeDuringOtherSessions = true;
     // Log every detected sync burst (type, distance, decoder state).  Verbose,
     // meant for diagnosing what a real radio actually transmits.
     bool   logSync = false;

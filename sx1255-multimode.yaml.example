@@ -131,9 +131,6 @@ modes:
     # nezávisí, takže krátká SMS se neztratí.
     min_sync_burst: 5
     idle_timeout_ms: 1500        # konec M17 relace po tichu
-    # Dekódovat M17 i když relaci vlastní jiný mód (FM, D-Star nebo jejich
-    # hang time) - packet se tak neztratí, když je kanál zrovna obsazený.
-    decode_during_other_sessions: true
     # Diagnostika: vypsat každý detekovaný sync burst (typ, vzdálenost, stav
     # dekodéru). Zapnout jen pro test s reálným rádiem - LSF a packet rámce se
     # logují vždy, stream bursty nejvýš 1x za sekundu.

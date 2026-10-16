@@ -319,8 +319,6 @@ Config loadConfig(const std::string& path)
     config.m17.syncFollowThreshold = optDouble(*m17, "sync_follow_threshold", config.m17.syncFollowThreshold);
     config.m17.minSyncBurst = static_cast<int>(optInt(*m17, "min_sync_burst", config.m17.minSyncBurst));
     config.m17.idleTimeoutMs = static_cast<int>(optInt(*m17, "idle_timeout_ms", config.m17.idleTimeoutMs));
-    config.m17.decodeDuringOtherSessions =
-        optBool(*m17, "decode_during_other_sessions", config.m17.decodeDuringOtherSessions);
     config.m17.logSync = optBool(*m17, "log_sync", config.m17.logSync);
     config.m17.networkPacketQueue =
         static_cast<int>(optInt(*m17, "network_packet_queue", config.m17.networkPacketQueue));
@@ -467,8 +465,6 @@ std::string serializeConfig(const Config& config)
     out << "    sync_follow_threshold: " << config.m17.syncFollowThreshold << '\n';
     out << "    min_sync_burst: " << config.m17.minSyncBurst << '\n';
     out << "    idle_timeout_ms: " << config.m17.idleTimeoutMs << '\n';
-    out << "    decode_during_other_sessions: "
-        << (config.m17.decodeDuringOtherSessions ? "true" : "false") << '\n';
     out << "    log_sync: " << (config.m17.logSync ? "true" : "false") << '\n';
     out << "    network_packet_queue: " << config.m17.networkPacketQueue << '\n';
     out << "    network_packet_ttl_ms: " << config.m17.networkPacketTtlMs << '\n';
