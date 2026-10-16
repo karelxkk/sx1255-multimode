@@ -10,13 +10,14 @@ Balíček obsahuje arm64 binárku `m17-bridge`, APRS konfiguraci a systemd unit.
 
 Výsledek: `build/m17-bridge_0.8.0-1_arm64.deb`.
 
-Ve výchozím stavu se používá binárka z repozitáře m17:
+Pokud je dostupné Go a zdrojový strom m17, balíček se přebuilduje z aktuálního
+zdroje:
 
 ```text
-/home/xkk/projects/repeater/m17/cmd/m17-bridge/m17-bridge
+/home/xkk/projects/repeater/m17
 ```
 
-Jiná binárka se předá druhým argumentem:
+Jinak se použije předpřipravená binárka, nebo se předá druhým argumentem:
 
 ```text
 ./build-deb.sh /tmp/m17-bridge.deb /cesta/k/m17-bridge
