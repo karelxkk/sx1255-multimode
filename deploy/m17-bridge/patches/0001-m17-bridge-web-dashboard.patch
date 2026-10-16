@@ -1,0 +1,1713 @@
+From b6dcf97faf59c22c7b35fab91a17d956eb354a94 Mon Sep 17 00:00:00 2001
+From: Karel Kadlec <xkk@post.cz>
+Date: Fri, 16 Oct 2026 21:34:47 +0200
+Subject: [PATCH] m17-bridge: add a web dashboard for messages and an SMS send
+ form
+
+The dashboard shows every message the bridge handled - RF to APRS-IS,
+APRS-IS to RF and messages sent from the dashboard - with the source
+callsign of the station rather than the gateway callsign, and offers a
+form that transmits an M17 SMS to the radios connected to the bridge
+module.
+
+- web: new package with the message store (in-memory ring plus a JSONL
+  history that survives a restart), the HTTP API and a self-contained
+  dashboard page (no new dependencies, Go stdlib only).
+- server: the APRS module hands each message it sends or receives to a
+  Recorder, logs it at INFO level (message traffic was invisible at the
+  configured INFO log level because it was logged at DEBUG), reports its
+  link state and registered users, and no longer fails to start when
+  APRS-IS is unreachable - the read loop keeps retrying.
+- inet: expose the connected clients, and do not panic in Close when the
+  listen socket was never opened.
+- cmd/m17-bridge: [Web] configuration, SMS sending that bypasses the APRS
+  module on purpose (a message from the dashboard is a transmission, not
+  an APRS message), and a non-zero exit when the inet server stops.
+---
+ cmd/m17-bridge/bridge.go | 147 +++++++++++++++++++++-
+ inet/server.go           |  49 ++++++++
+ server/aprs_module.go    | 139 +++++++++++++++++++-
+ web/store.go             | 265 +++++++++++++++++++++++++++++++++++++++
+ web/store_test.go        | 135 ++++++++++++++++++++
+ web/ui.html              | 249 ++++++++++++++++++++++++++++++++++++
+ web/web.go               | 250 ++++++++++++++++++++++++++++++++++++
+ web/web_test.go          | 244 +++++++++++++++++++++++++++++++++++
+ 8 files changed, 1471 insertions(+), 7 deletions(-)
+ create mode 100644 web/store.go
+ create mode 100644 web/store_test.go
+ create mode 100644 web/ui.html
+ create mode 100644 web/web.go
+ create mode 100644 web/web_test.go
+
+diff --git a/cmd/m17-bridge/bridge.go b/cmd/m17-bridge/bridge.go
+index 179908e..9390b04 100644
+--- a/cmd/m17-bridge/bridge.go
++++ b/cmd/m17-bridge/bridge.go
+@@ -8,13 +8,18 @@ import (
+ 	"os"
+ 	"time"
+ 
++	"github.com/jancona/m17"
+ 	"github.com/jancona/m17/inet"
+ 
+ 	"github.com/hashicorp/logutils"
+ 	"github.com/jancona/m17/server"
++	"github.com/jancona/m17/web"
+ 	"gopkg.in/ini.v1"
+ )
+ 
++// bridgeVersion is reported by the web dashboard.
++const bridgeVersion = "0.9.0"
++
+ type config struct {
+ 	name          string
+ 	listenAddress string
+@@ -23,6 +28,18 @@ type config struct {
+ 	logLevel      string
+ 	logPath       string
+ 	logRoot       string
++	web           webConfig
++}
++
++// webConfig is the [Web] section: the message dashboard and its send form.
++type webConfig struct {
++	listenAddress   string
++	listenPort      string
++	defaultSource   string
++	storePath       string
++	maxMessages     int
++	maxTextLength   int
++	minSendInterval time.Duration
+ }
+ 
+ func loadConfig(iniFile string) (*config, error) {
+@@ -47,6 +64,24 @@ func loadConfig(iniFile string) (*config, error) {
+ 	logLevel := cfg.Section("Log").Key("Level").String()
+ 	logPath := cfg.Section("Log").Key("Path").String()
+ 	logRoot := cfg.Section("Log").Key("Root").String()
++
++	webSection := cfg.Section("Web")
++	webCfg := webConfig{
++		listenAddress:   webSection.Key("ListenAddress").String(),
++		listenPort:      webSection.Key("ListenPort").String(),
++		defaultSource:   webSection.Key("DefaultSource").String(),
++		storePath:       webSection.Key("StorePath").String(),
++		maxMessages:     webSection.Key("MaxMessages").MustInt(500),
++		maxTextLength:   webSection.Key("MaxTextLength").MustInt(67),
++		minSendInterval: time.Duration(webSection.Key("MinSendInterval").MustInt(2)) * time.Second,
++	}
++	if webCfg.listenPort == "" {
++		webCfg.listenPort = "17080"
++	}
++	if webCfg.defaultSource == "" {
++		webCfg.defaultSource = name
++	}
++
+ 	var logLevelErr error
+ 	if logLevel != "ERROR" && logLevel != "INFO" && logLevel != "DEBUG" {
+ 		logLevelErr = fmt.Errorf("configured Log Level must be one of ERROR, INFO or DEBUG")
+@@ -64,6 +99,7 @@ func loadConfig(iniFile string) (*config, error) {
+ 		logLevel:      logLevel,
+ 		logPath:       logPath,
+ 		logRoot:       logRoot,
++		web:           webCfg,
+ 	}
+ 	return &c, err
+ }
+@@ -96,7 +132,9 @@ func main() {
+ 		log.Fatalf("Error creating Bridge: %v", err)
+ 	}
+ 	defer b.Close()
+-	b.Run()
++	if err := b.Run(); err != nil {
++		log.Fatalf("Bridge stopped: %v", err)
++	}
+ }
+ 
+ func setupLogging(c *config) {
+@@ -122,13 +160,67 @@ func setupLogging(c *config) {
+ 	log.Print("[DEBUG] Debug is on")
+ }
+ 
++// Bridge glues the inet server, its modules and the web dashboard together.
+ type Bridge struct {
+-	server *inet.Server
++	server    *inet.Server
++	aprs      *server.APRSModule
++	store     *web.Store
++	dashboard *web.Server
++	started   time.Time
++
++	// module is the module letter radios connect to; messages sent from the
++	// dashboard go to its clients, so the repeater transmits them on RF.
++	module        byte
++	name          string
++	defaultSource string
++}
++
++// Module returns the module letter used for messages sent from the dashboard.
++func (b *Bridge) Module() byte { return b.module }
++
++// Version returns the bridge version, shown by the dashboard.
++func (b *Bridge) Version() string { return bridgeVersion }
++
++// Uptime returns how long the bridge has been running.
++func (b *Bridge) Uptime() time.Duration { return time.Since(b.started) }
++
++// Clients returns the radios and hotspots connected to the bridge.
++func (b *Bridge) Clients() []inet.ClientInfo { return b.server.Clients() }
++
++// Store returns the message history shown by the dashboard.
++func (b *Bridge) Store() *web.Store { return b.store }
++
++// APRSStatus returns the state of the APRS-IS link and its registered users.
++func (b *Bridge) APRSStatus() server.APRSStatus {
++	if b.aprs == nil {
++		return server.APRSStatus{Users: []server.APRSUser{}}
++	}
++	return b.aprs.Status()
++}
++
++// SendSMS builds an M17 SMS and sends it to every client of the bridge module,
++// so the connected repeater transmits it on RF.  It deliberately bypasses the
++// APRS module: a message from the dashboard is an RF transmission, not an APRS
++// message, and it must not be relayed to APRS-IS twice.
++func (b *Bridge) SendSMS(to, text string) error {
++	if len(b.server.ClientsByModule(b.module)) == 0 {
++		return web.ErrNoClients
++	}
++	p, err := m17.NewPacket(to, b.defaultSource, m17.PacketTypeSMS, append([]byte(text), 0))
++	if err != nil {
++		return fmt.Errorf("%w: %v", web.ErrBadCallsign, err)
++	}
++	b.server.SendPacketToModule(b.module, p)
++	return nil
+ }
+ 
+ func NewBridge(cfg *config) (*Bridge, error) {
+ 	var err error
+-	ret := Bridge{}
++	ret := Bridge{
++		started:       time.Now(),
++		name:          cfg.name,
++		defaultSource: cfg.web.defaultSource,
++	}
+ 	modules := map[byte]inet.Module{}
+ 	ret.server = inet.NewServer(cfg.name, cfg.listenAddress+":"+cfg.listenPort, modules)
+ 	for k, m := range cfg.modules {
+@@ -166,7 +258,8 @@ func NewBridge(cfg *config) (*Bridge, error) {
+ 			}
+ 		case "APRS":
+ 			staleMinutes := m.Key("StaleMinutes").MustInt(60)
+-			modules[k], err = server.NewAPRSModule(
++			var aprs *server.APRSModule
++			aprs, err = server.NewAPRSModule(
+ 				k,
+ 				ret.server,
+ 				m.Key("Server").String(),
+@@ -177,15 +270,57 @@ func NewBridge(cfg *config) (*Bridge, error) {
+ 			if err != nil {
+ 				return nil, err
+ 			}
++			modules[k] = aprs
++			ret.aprs = aprs
++			ret.module = k
+ 		default:
+ 			return nil, fmt.Errorf("unknown module type '%s'", m.Key("Type").String())
+ 		}
++		if ret.module == 0 {
++			ret.module = k
++		}
++	}
++
++	if cfg.web.listenAddress != "" {
++		if ret.store, err = web.NewStore(cfg.web.storePath, cfg.web.maxMessages); err != nil {
++			return nil, fmt.Errorf("opening message store: %w", err)
++		}
++		if ret.aprs != nil {
++			ret.aprs.SetRecorder(ret.store)
++		}
++		ret.dashboard = web.NewServer(web.Config{
++			ListenAddress:   cfg.web.listenAddress,
++			ListenPort:      cfg.web.listenPort,
++			DefaultSource:   ret.defaultSource,
++			MaxTextLength:   cfg.web.maxTextLength,
++			MinSendInterval: cfg.web.minSendInterval,
++		}, &ret)
++		log.Printf("[INFO] Message dashboard enabled for module %s, source %s",
++			string(ret.module), ret.defaultSource)
+ 	}
+ 	return &ret, nil
+ }
+-func (b *Bridge) Run() {
+-	b.server.Start()
++
++// Run serves the dashboard and the M17 interface until they fail.  It returns
++// the error that stopped the inet server, so the caller can exit non-zero and
++// let systemd restart the bridge.
++func (b *Bridge) Run() error {
++	if b.dashboard != nil {
++		go func() {
++			if err := b.dashboard.Start(); err != nil {
++				log.Printf("[ERROR] Web dashboard stopped: %v", err)
++			}
++		}()
++	}
++	return b.server.Start()
+ }
++
+ func (b *Bridge) Close() {
+ 	b.server.Close()
++	if b.dashboard != nil {
++		b.dashboard.Close()
++	}
++	if b.store != nil {
++		b.store.Close()
++	}
+ }
+diff --git a/inet/server.go b/inet/server.go
+index 8bdcc8d..4eea667 100644
+--- a/inet/server.go
++++ b/inet/server.go
+@@ -4,6 +4,7 @@ import (
+ 	"fmt"
+ 	"log"
+ 	"net"
++	"sort"
+ 	"sync"
+ 	"time"
+ 
+@@ -172,6 +173,9 @@ func (s *Server) handle() {
+ }
+ 
+ func (s *Server) Close() {
++	if s.conn == nil {
++		return
++	}
+ 	s.conn.Close()
+ }
+ 
+@@ -334,3 +338,48 @@ func (s *Server) SendPacketToModule(m byte, p *m17.Packet) {
+ 		}
+ 	}
+ }
++
++// ClientInfo describes one client connected to a module.  It is a snapshot,
++// mainly for management interfaces such as the bridge's web dashboard.
++type ClientInfo struct {
++	Callsign   string `json:"callsign"`
++	Module     string `json:"module"`
++	Addr       string `json:"addr"`
++	ListenOnly bool   `json:"listen_only"`
++}
++
++// Clients returns a snapshot of all connected clients, sorted by address.
++func (s *Server) Clients() []ClientInfo {
++	s.mutex.Lock()
++	defer s.mutex.Unlock()
++	return s.clientsLocked(0)
++}
++
++// ClientsByModule returns a snapshot of the clients linked to module m.
++func (s *Server) ClientsByModule(m byte) []ClientInfo {
++	s.mutex.Lock()
++	defer s.mutex.Unlock()
++	return s.clientsLocked(m)
++}
++
++// clientsLocked snapshots s.clients; module 0 means "any module".
++func (s *Server) clientsLocked(module byte) []ClientInfo {
++	out := make([]ClientInfo, 0, len(s.clients))
++	for _, c := range s.clients {
++		if c.module == nil {
++			continue
++		}
++		name := c.module.Name()
++		if module != 0 && name != module {
++			continue
++		}
++		out = append(out, ClientInfo{
++			Callsign:   c.callsign,
++			Module:     string(name),
++			Addr:       c.addr.String(),
++			ListenOnly: c.listenOnly,
++		})
++	}
++	sort.Slice(out, func(i, j int) bool { return out[i].Addr < out[j].Addr })
++	return out
++}
+diff --git a/server/aprs_module.go b/server/aprs_module.go
+index f28c365..2fd015b 100644
+--- a/server/aprs_module.go
++++ b/server/aprs_module.go
+@@ -3,6 +3,7 @@ package server
+ import (
+ 	"fmt"
+ 	"log"
++	"sort"
+ 	"strings"
+ 	"sync"
+ 	"time"
+@@ -30,12 +31,93 @@ type APRSModule struct {
+ 	passcode     string
+ 	aprsSymbol   string
+ 	staleTimeout time.Duration
++	recorder     Recorder
+ 
+ 	mu    sync.Mutex // protects conn and users
+ 	conn  *fap.Conn
+ 	users map[string]*aprsUser
+ }
+ 
++// MessageRecord is one message that the bridge handled.  The bridge hands
++// these to the web dashboard, which keeps them for the operator.
++type MessageRecord struct {
++	Direction string `json:"direction"` // rf2aprs, aprs2rf
++	Module    string `json:"module"`
++	Src       string `json:"src"` // callsign of the station that sent it
++	Dst       string `json:"dst"`
++	Type      string `json:"type"`
++	Text      string `json:"text"`
++	Transport string `json:"transport"` // APRS-IS, RF
++	Status    string `json:"status"`    // sent, failed
++	Detail    string `json:"detail"`
++}
++
++// Recorder receives every message the bridge handles.  It is an interface so
++// that the web dashboard can be wired in without the module depending on it.
++type Recorder interface {
++	Record(MessageRecord)
++}
++
++// APRSUser is a radio that has registered with the APRS module by sending a
++// message; the module then follows its APRS traffic.
++type APRSUser struct {
++	M17       string `json:"m17"`
++	APRS      string `json:"aprs"`
++	LastHeard string `json:"last_heard"`
++}
++
++// APRSStatus is a snapshot of the APRS-IS link and its registered users.
++type APRSStatus struct {
++	Server    string     `json:"server"`
++	Callsign  string     `json:"callsign"`
++	Connected bool       `json:"connected"`
++	Filter    string     `json:"filter"`
++	Users     []APRSUser `json:"users"`
++}
++
++// SetRecorder installs the message recorder.  It must be called before the
++// module starts handling traffic.
++func (m *APRSModule) SetRecorder(r Recorder) {
++	m.recorder = r
++}
++
++// record stores a message for the dashboard and logs it at INFO level, so
++// message traffic is visible in the journal without enabling DEBUG.
++func (m *APRSModule) record(rec MessageRecord) {
++	if rec.Module == "" {
++		rec.Module = string(m.name)
++	}
++	if rec.Status == "" {
++		rec.Status = "sent"
++	}
++	if m.recorder != nil {
++		m.recorder.Record(rec)
++	}
++	log.Printf("[INFO] %s %s>%s: %q (%s)", strings.ToUpper(rec.Direction), rec.Src, rec.Dst, rec.Text, rec.Status)
++}
++
++// Status returns the current APRS-IS link state and the registered users.
++func (m *APRSModule) Status() APRSStatus {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	st := APRSStatus{
++		Server:    m.serverName,
++		Callsign:  m.callsign,
++		Connected: m.conn != nil,
++		Filter:    m.buildFilter(),
++		Users:     []APRSUser{},
++	}
++	for cs, u := range m.users {
++		st.Users = append(st.Users, APRSUser{
++			M17:       cs,
++			APRS:      u.aprsCallsign,
++			LastHeard: u.lastHeard.UTC().Format(time.RFC3339),
++		})
++	}
++	sort.Slice(st.Users, func(i, j int) bool { return st.Users[i].M17 < st.Users[j].M17 })
++	return st
++}
++
+ type aprsUser struct {
+ 	aprsCallsign       string
+ 	lastPositionReport time.Time
+@@ -61,8 +143,10 @@ func NewAPRSModule(name byte, server *inet.Server, serverName string, callsign s
+ 		staleTimeout: staleTimeout,
+ 		users:        map[string]*aprsUser{},
+ 	}
++	// A failed initial connect is not fatal: the readLoop keeps retrying, so
++	// the bridge (and its web dashboard) stay up while APRS-IS is unreachable.
+ 	if err := m.connect(); err != nil {
+-		return nil, fmt.Errorf("connecting to APRS-IS: %w", err)
++		log.Printf("[INFO] Unable to connect to APRS-IS at startup: %v", err)
+ 	}
+ 	go m.readLoop()
+ 	if staleTimeout > 0 {
+@@ -206,6 +290,16 @@ func (m *APRSModule) handleAPRSMessage(pkt *fap.Packet) {
+ 	m.mu.Unlock()
+ 	if m17Callsign == "" {
+ 		log.Printf("[DEBUG] No M17 user found for APRS destination %s", dst)
++		m.record(MessageRecord{
++			Direction: "aprs2rf",
++			Src:       pkt.SrcCallsign,
++			Dst:       dst,
++			Type:      "SMS",
++			Text:      msg.Text,
++			Transport: "RF",
++			Status:    "failed",
++			Detail:    fmt.Sprintf("%s is not registered as an M17 user", dst),
++		})
+ 		return
+ 	}
+ 	msgBytes := append([]byte(msg.Text), 0)
+@@ -215,6 +309,16 @@ func (m *APRSModule) handleAPRSMessage(pkt *fap.Packet) {
+ 		return
+ 	}
+ 	m.server.SendPacketToModule(m.Name(), p)
++	m.record(MessageRecord{
++		Direction: "aprs2rf",
++		Src:       pkt.SrcCallsign,
++		Dst:       m17Callsign,
++		Type:      "SMS",
++		Text:      msg.Text,
++		Transport: "RF",
++		Status:    "sent",
++		Detail:    fmt.Sprintf("%s>%s %s", pkt.SrcCallsign, m17Callsign, msg.ID),
++	})
+ }
+ 
+ // getOrAddUser returns the aprsUser for the given M17 callsign,
+@@ -279,9 +383,21 @@ func (m *APRSModule) HandlePacket(p m17.Packet) error {
+ 	}
+ 	packet := fmt.Sprintf("%s>%s:%s", u.aprsCallsign, deviceID, body)
+ 	log.Printf("[DEBUG] Sending packet: '%s'", packet)
++	status := "sent"
+ 	if err := m.sendLine(packet); err != nil {
+ 		log.Printf("[INFO] Unable to send message: %v", err)
++		status = "failed"
+ 	}
++	m.record(MessageRecord{
++		Direction: "rf2aprs",
++		Src:       p.LSF.Src.Callsign(),
++		Dst:       p.LSF.Dst.Callsign(),
++		Type:      packetTypeName(p.Type),
++		Text:      msgText,
++		Transport: "APRS-IS",
++		Status:    status,
++		Detail:    packet,
++	})
+ 	if p.LSF.GNSS() != nil && p.LSF.GNSS().ValidLatLon {
+ 		if time.Since(u.lastPositionReport) > 5*time.Minute {
+ 			if err := m.sendGNSSFrame(u, p.LSF.GNSS()); err != nil {
+@@ -351,3 +467,24 @@ func aprsCallsign(callsign string) string {
+ 	log.Printf("[DEBUG] APRS callsign: %s", aprsCallsign)
+ 	return aprsCallsign
+ }
++
++// packetTypeName renders an M17 packet type for the dashboard and the journal.
++func packetTypeName(t m17.PacketType) string {
++	switch t {
++	case m17.PacketTypeRAW:
++		return "RAW"
++	case m17.PacketTypeAX25:
++		return "AX25"
++	case m17.PacketTypeAPRS:
++		return "APRS"
++	case m17.PacketType6LoWPAN:
++		return "6LoWPAN"
++	case m17.PacketTypeIPv4:
++		return "IPv4"
++	case m17.PacketTypeSMS:
++		return "SMS"
++	case m17.PacketTypeWinlink:
++		return "Winlink"
++	}
++	return fmt.Sprintf("0x%02x", byte(t))
++}
+diff --git a/web/store.go b/web/store.go
+new file mode 100644
+index 0000000..f41b111
+--- /dev/null
++++ b/web/store.go
+@@ -0,0 +1,265 @@
++// Package web serves the m17-bridge dashboard: the list of text messages that
++// passed through the bridge and a form that sends an M17 SMS over RF.
++package web
++
++import (
++	"bufio"
++	"encoding/json"
++	"log"
++	"os"
++	"path/filepath"
++	"strings"
++	"sync"
++	"time"
++
++	"github.com/jancona/m17/server"
++)
++
++const (
++	// defaultCapacity is how many messages the dashboard keeps without any
++	// configuration.
++	defaultCapacity = 500
++	// maxStoreBytes is the size at which the JSONL history is rotated.
++	maxStoreBytes = 1 << 20 // 1 MiB
++)
++
++// Message is one text message that passed through the bridge.
++type Message struct {
++	ID        int64     `json:"id"`
++	Time      time.Time `json:"time"`
++	Direction string    `json:"direction"` // rf2aprs, aprs2rf, web2rf
++	Module    string    `json:"module"`
++	Src       string    `json:"src"` // station that sent it, not the gateway
++	Dst       string    `json:"dst"`
++	Type      string    `json:"type"`
++	Text      string    `json:"text"`
++	Transport string    `json:"transport"` // APRS-IS, RF
++	Status    string    `json:"status"`    // sent, failed
++	Detail    string    `json:"detail"`
++}
++
++// Store keeps the most recent messages in memory, so the dashboard can show
++// them without touching the disk, and appends them to a JSONL file so the
++// history survives a restart.
++type Store struct {
++	mu       sync.Mutex
++	messages []Message
++	nextID   int64
++	capacity int
++	path     string
++	file     *os.File
++	written  int64
++}
++
++// NewStore opens and reloads the JSONL history at path.  An empty path keeps
++// the store in memory only.
++func NewStore(path string, capacity int) (*Store, error) {
++	if capacity <= 0 {
++		capacity = defaultCapacity
++	}
++	s := &Store{capacity: capacity, path: path}
++	if path == "" {
++		return s, nil
++	}
++	if err := s.load(); err != nil {
++		return nil, err
++	}
++	if err := s.open(); err != nil {
++		return nil, err
++	}
++	return s, nil
++}
++
++// open opens the append-only history file, rotating it first when an earlier
++// run left it bigger than maxStoreBytes.
++func (s *Store) open() error {
++	if info, err := os.Stat(s.path); err == nil && info.Size() > maxStoreBytes {
++		if err := os.Rename(s.path, s.path+".1"); err != nil {
++			log.Printf("[INFO] Unable to rotate %s: %v", s.path, err)
++		}
++	}
++	if dir := filepath.Dir(s.path); dir != "" && dir != "." {
++		if err := os.MkdirAll(dir, 0o750); err != nil {
++			return err
++		}
++	}
++	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
++	if err != nil {
++		return err
++	}
++	s.file = f
++	if info, err := f.Stat(); err == nil {
++		s.written = info.Size()
++	}
++	return nil
++}
++
++// load reads the history written by earlier runs, keeping the newest
++// capacity messages.
++func (s *Store) load() error {
++	f, err := os.Open(s.path)
++	if os.IsNotExist(err) {
++		return nil
++	}
++	if err != nil {
++		return err
++	}
++	defer f.Close()
++
++	scanner := bufio.NewScanner(f)
++	scanner.Buffer(make([]byte, 0, 64*1024), maxStoreBytes)
++	for scanner.Scan() {
++		line := strings.TrimSpace(scanner.Text())
++		if line == "" {
++			continue
++		}
++		var m Message
++		if err := json.Unmarshal([]byte(line), &m); err != nil {
++			log.Printf("[INFO] Skipping unreadable message in %s: %v", s.path, err)
++			continue
++		}
++		s.messages = append(s.messages, m)
++		if m.ID > s.nextID {
++			s.nextID = m.ID
++		}
++	}
++	if err := scanner.Err(); err != nil {
++		return err
++	}
++	if len(s.messages) > s.capacity {
++		s.messages = s.messages[len(s.messages)-s.capacity:]
++	}
++	log.Printf("[INFO] Loaded %d stored messages from %s", len(s.messages), s.path)
++	return nil
++}
++
++// Add stores a message and returns it with its assigned ID and timestamp.
++func (s *Store) Add(m Message) Message {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++
++	s.nextID++
++	m.ID = s.nextID
++	if m.Time.IsZero() {
++		m.Time = time.Now().UTC()
++	}
++	if m.Status == "" {
++		m.Status = "sent"
++	}
++	s.messages = append(s.messages, m)
++	if len(s.messages) > s.capacity {
++		s.messages = s.messages[len(s.messages)-s.capacity:]
++	}
++	s.persistLocked(m)
++	return m
++}
++
++// Record implements server.Recorder: the APRS module hands over every message
++// it sent to APRS-IS or to the radios.
++func (s *Store) Record(r server.MessageRecord) {
++	s.Add(Message{
++		Direction: r.Direction,
++		Module:    r.Module,
++		Src:       r.Src,
++		Dst:       r.Dst,
++		Type:      r.Type,
++		Text:      r.Text,
++		Transport: r.Transport,
++		Status:    r.Status,
++		Detail:    r.Detail,
++	})
++}
++
++// List returns the newest messages first, filtered by direction, minimum ID
++// and a case-insensitive substring match on src, dst and text.
++func (s *Store) List(limit int, since int64, direction, query string) []Message {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++
++	if limit <= 0 || limit > s.capacity {
++		limit = s.capacity
++	}
++	query = strings.ToLower(strings.TrimSpace(query))
++	out := make([]Message, 0, limit)
++	for i := len(s.messages) - 1; i >= 0 && len(out) < limit; i-- {
++		m := s.messages[i]
++		if m.ID <= since {
++			break
++		}
++		if direction != "" && direction != "all" && m.Direction != direction {
++			continue
++		}
++		if query != "" && !strings.Contains(strings.ToLower(m.Src+" "+m.Dst+" "+m.Text), query) {
++			continue
++		}
++		out = append(out, m)
++	}
++	return out
++}
++
++// Counts returns the number of stored messages per direction.
++func (s *Store) Counts() map[string]int {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	counts := map[string]int{}
++	for _, m := range s.messages {
++		counts[m.Direction]++
++	}
++	return counts
++}
++
++// LastID returns the ID of the newest stored message.
++func (s *Store) LastID() int64 {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return s.nextID
++}
++
++// Close closes the history file.
++func (s *Store) Close() error {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.file == nil {
++		return nil
++	}
++	err := s.file.Close()
++	s.file = nil
++	return err
++}
++
++// persistLocked appends the message to the history file.  A failure is logged
++// but not fatal: the dashboard keeps working from memory.
++func (s *Store) persistLocked(m Message) {
++	if s.file == nil {
++		return
++	}
++	line, err := json.Marshal(m)
++	if err != nil {
++		log.Printf("[INFO] Unable to encode message: %v", err)
++		return
++	}
++	line = append(line, '\n')
++	n, err := s.file.Write(line)
++	s.written += int64(n)
++	if err != nil {
++		log.Printf("[INFO] Unable to write a message to %s: %v", s.path, err)
++		return
++	}
++	if s.written > maxStoreBytes {
++		s.rotateLocked()
++	}
++}
++
++// rotateLocked starts a fresh history file, keeping the previous one as .1.
++func (s *Store) rotateLocked() {
++	name := s.file.Name()
++	s.file.Close()
++	s.file = nil
++	if err := os.Rename(name, name+".1"); err != nil {
++		log.Printf("[INFO] Unable to rotate %s: %v", name, err)
++	}
++	if err := s.open(); err != nil {
++		log.Printf("[INFO] Unable to reopen %s: %v", s.path, err)
++	}
++	s.written = 0
++}
+diff --git a/web/store_test.go b/web/store_test.go
+new file mode 100644
+index 0000000..6c5a063
+--- /dev/null
++++ b/web/store_test.go
+@@ -0,0 +1,135 @@
++package web
++
++import (
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/jancona/m17/server"
++)
++
++func TestStoreAddAndList(t *testing.T) {
++	s, err := NewStore("", 10)
++	if err != nil {
++		t.Fatalf("NewStore: %v", err)
++	}
++	defer s.Close()
++
++	s.Add(Message{Direction: "rf2aprs", Src: "OK1ABC", Dst: "OK1XYZ", Text: "prvni"})
++	s.Add(Message{Direction: "aprs2rf", Src: "OK1XYZ", Dst: "OK1ABC", Text: "druha"})
++	last := s.Add(Message{Direction: "web2rf", Src: "OK1LBC", Dst: "OK1ABC", Text: "ze webu"})
++
++	if last.ID != 3 {
++		t.Errorf("last ID = %d, want 3", last.ID)
++	}
++	if last.Status != "sent" {
++		t.Errorf("status = %q, want sent", last.Status)
++	}
++	if last.Time.IsZero() {
++		t.Error("timestamp not filled in")
++	}
++	if got := s.LastID(); got != 3 {
++		t.Errorf("LastID = %d, want 3", got)
++	}
++
++	all := s.List(0, 0, "", "")
++	if len(all) != 3 {
++		t.Fatalf("List returned %d messages, want 3", len(all))
++	}
++	if all[0].Text != "ze webu" {
++		t.Errorf("newest message = %q, want %q", all[0].Text, "ze webu")
++	}
++
++	onlyWeb := s.List(0, 0, "web2rf", "")
++	if len(onlyWeb) != 1 || onlyWeb[0].Text != "ze webu" {
++		t.Errorf("direction filter returned %v", onlyWeb)
++	}
++
++	byQuery := s.List(0, 0, "", "ok1xyz")
++	if len(byQuery) != 2 {
++		t.Errorf("query filter returned %d messages, want 2", len(byQuery))
++	}
++
++	sinceLast := s.List(0, 2, "", "")
++	if len(sinceLast) != 1 || sinceLast[0].ID != 3 {
++		t.Errorf("since filter returned %v", sinceLast)
++	}
++
++	if got := s.Counts()["rf2aprs"]; got != 1 {
++		t.Errorf("Counts[rf2aprs] = %d, want 1", got)
++	}
++}
++
++func TestStoreCapacity(t *testing.T) {
++	s, err := NewStore("", 2)
++	if err != nil {
++		t.Fatalf("NewStore: %v", err)
++	}
++	defer s.Close()
++
++	for _, text := range []string{"a", "b", "c"} {
++		s.Add(Message{Text: text})
++	}
++	got := s.List(0, 0, "", "")
++	if len(got) != 2 {
++		t.Fatalf("List returned %d messages, want 2", len(got))
++	}
++	if got[0].Text != "c" || got[1].Text != "b" {
++		t.Errorf("kept %q, %q; want c, b", got[0].Text, got[1].Text)
++	}
++}
++
++func TestStorePersistence(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "messages.jsonl")
++
++	s, err := NewStore(path, 10)
++	if err != nil {
++		t.Fatalf("NewStore: %v", err)
++	}
++	s.Add(Message{Direction: "rf2aprs", Src: "OK1ABC", Dst: "OK1XYZ", Text: "ulozeno"})
++	if err := s.Close(); err != nil {
++		t.Fatalf("Close: %v", err)
++	}
++
++	again, err := NewStore(path, 10)
++	if err != nil {
++		t.Fatalf("reopen: %v", err)
++	}
++	defer again.Close()
++
++	got := again.List(0, 0, "", "")
++	if len(got) != 1 {
++		t.Fatalf("reloaded %d messages, want 1", len(got))
++	}
++	if got[0].Text != "ulozeno" || got[0].Src != "OK1ABC" {
++		t.Errorf("reloaded %+v", got[0])
++	}
++	next := again.Add(Message{Text: "dalsi"})
++	if next.ID != 2 {
++		t.Errorf("ID after reload = %d, want 2", next.ID)
++	}
++}
++
++func TestStoreRecord(t *testing.T) {
++	s, err := NewStore("", 10)
++	if err != nil {
++		t.Fatalf("NewStore: %v", err)
++	}
++	defer s.Close()
++
++	s.Record(server.MessageRecord{
++		Direction: "rf2aprs",
++		Src:       "OK1ABC",
++		Dst:       "OK1XYZ",
++		Text:      "ahoj",
++		Transport: "APRS-IS",
++	})
++
++	got := s.List(0, 0, "", "")
++	if len(got) != 1 || got[0].Direction != "rf2aprs" || got[0].Status != "sent" {
++		t.Fatalf("Record stored %+v", got)
++	}
++	if !got[0].Time.Before(time.Now().Add(time.Second)) {
++		t.Errorf("timestamp looks wrong: %v", got[0].Time)
++	}
++}
+diff --git a/web/ui.html b/web/ui.html
+new file mode 100644
+index 0000000..b174165
+--- /dev/null
++++ b/web/ui.html
+@@ -0,0 +1,249 @@
++<!DOCTYPE html>
++<html lang="cs">
++<head>
++<meta charset="utf-8">
++<meta name="viewport" content="width=device-width, initial-scale=1">
++<title>M17 bridge · zprávy</title>
++<style>
++  body { margin:0; background:#0d1117; color:#c9d1d9; font:14px/1.45 system-ui,sans-serif; }
++  header { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 16px; border-bottom:1px solid #21262d; }
++  h1 { margin:0; font-size:16px; font-weight:600; }
++  h1 span { color:#8b949e; font-weight:400; }
++  .pills { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
++  .pill { border:1px solid #21262d; border-radius:999px; padding:3px 10px; color:#8b949e; font-size:12px; }
++  .pill.ok { border-color:#2ea043; color:#3fb950; }
++  .pill.bad { border-color:#f85149; color:#f85149; }
++  main { display:grid; gap:12px; padding:12px 16px 24px; max-width:1100px; margin:0 auto; }
++  .panel { background:#161b22; border:1px solid #21262d; border-radius:8px; padding:12px; }
++  h2 { margin:0 0 10px; font-size:12px; font-weight:600; color:#8b949e; text-transform:uppercase; letter-spacing:.06em; }
++  .form { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
++  label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:#8b949e; }
++  .grow { flex:1 1 240px; }
++  input { background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; padding:6px 8px; font:inherit; }
++  input:focus { outline:none; border-color:#58a6ff; }
++  input[disabled] { color:#8b949e; }
++  button { background:#238636; border:1px solid #2ea043; border-radius:6px; color:#fff; padding:7px 14px; font:inherit; cursor:pointer; }
++  button:disabled { background:#21262d; border-color:#30363d; color:#8b949e; cursor:default; }
++  .hint { color:#8b949e; font-size:12px; margin-top:8px; }
++  .result { margin-top:8px; font-size:13px; min-height:18px; }
++  .result.ok { color:#3fb950; }
++  .result.bad { color:#f85149; }
++  .filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
++  select { background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; padding:6px 8px; font:inherit; }
++  table { width:100%; border-collapse:collapse; font-size:13px; }
++  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #21262d; vertical-align:top; }
++  th { color:#8b949e; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
++  tr:last-child td { border-bottom:none; }
++  td.time { color:#8b949e; white-space:nowrap; }
++  td.text { word-break:break-word; }
++  .dir { white-space:nowrap; font-size:12px; }
++  .dir.out { color:#58a6ff; }
++  .dir.in { color:#d29922; }
++  .st-sent { color:#3fb950; }
++  .st-failed { color:#f85149; }
++  .empty { color:#8b949e; padding:10px 0; }
++</style>
++</head>
++<body>
++<header>
++  <h1>M17 bridge <span id="module"></span> <span id="version"></span></h1>
++  <div class="pills">
++    <span class="pill" id="p-aprs">APRS-IS: ?</span>
++    <span class="pill" id="p-rf">RF: ?</span>
++    <span class="pill" id="p-count">zpráv: 0</span>
++  </div>
++</header>
++<main>
++  <section class="panel">
++    <h2>Odeslat SMS na RF</h2>
++    <div class="form">
++      <label>Komu
++        <input id="to" placeholder="OK1ABC" maxlength="12" autocomplete="off" spellcheck="false">
++      </label>
++      <label class="grow">Text
++        <input id="text" placeholder="Ahoj z webu" autocomplete="off">
++      </label>
++      <button id="send">Odeslat</button>
++    </div>
++    <div class="hint">Zpráva se vyšle do éteru jako M17 SMS, zdrojový znak <b id="src">?</b>.</div>
++    <div class="result" id="result"></div>
++  </section>
++  <section class="panel">
++    <h2>Zprávy</h2>
++    <div class="filters">
++      <label>Směr
++        <select id="direction">
++          <option value="all">vše</option>
++          <option value="rf2aprs">RF → APRS-IS</option>
++          <option value="web2rf">WEB → RF</option>
++          <option value="aprs2rf">APRS-IS → RF</option>
++        </select>
++      </label>
++      <label class="grow">Hledat
++        <input id="query" placeholder="znak nebo text" autocomplete="off">
++      </label>
++    </div>
++    <table>
++      <thead>
++        <tr><th>Čas</th><th>Směr</th><th>Od</th><th>Komu</th><th>Text</th><th>Transport</th><th>Stav</th></tr>
++      </thead>
++      <tbody id="rows"></tbody>
++    </table>
++    <div class="empty" id="empty">Zatím žádné zprávy.</div>
++  </section>
++</main>
++<script>
++'use strict';
++const $ = function(id){ return document.getElementById(id); };
++const DIRS = { rf2aprs:['RF → APRS','out'], web2rf:['WEB → RF','out'], aprs2rf:['APRS → RF','in'] };
++const STATUS = { sent:'odesláno', failed:'neodesláno' };
++let maxLen = 67;
++
++async function getJSON(path){
++  const r = await fetch(path, {cache:'no-store'});
++  let body = null;
++  try { body = await r.json(); } catch (e) { body = null; }
++  if (!r.ok) throw new Error((body && body.error) || ('HTTP ' + r.status));
++  return body;
++}
++
++function setPill(id, text, ok, detail){
++  const el = $(id);
++  el.textContent = text;
++  el.className = 'pill ' + (ok ? 'ok' : 'bad');
++  el.title = detail || '';
++}
++
++function localTime(iso){
++  const d = new Date(iso);
++  return isNaN(d) ? iso : d.toLocaleTimeString('cs-CZ', {hour12:false});
++}
++
++function render(messages){
++  const rows = $('rows');
++  rows.textContent = '';
++  for (const m of messages){
++    const tr = document.createElement('tr');
++    const dir = DIRS[m.direction] || [m.direction, ''];
++
++    const tdTime = document.createElement('td');
++    tdTime.className = 'time';
++    tdTime.textContent = localTime(m.time);
++    tdTime.title = m.time;
++
++    const tdDir = document.createElement('td');
++    tdDir.className = 'dir ' + dir[1];
++    tdDir.textContent = dir[0];
++
++    const tdSrc = document.createElement('td');
++    tdSrc.textContent = m.src || '';
++    const tdDst = document.createElement('td');
++    tdDst.textContent = m.dst || '';
++    const tdText = document.createElement('td');
++    tdText.className = 'text';
++    tdText.textContent = m.text || '';
++    const tdTransport = document.createElement('td');
++    tdTransport.textContent = m.transport || '';
++    const tdStatus = document.createElement('td');
++    tdStatus.className = 'st-' + (m.status || 'sent');
++    tdStatus.textContent = STATUS[m.status] || m.status || '';
++    tdStatus.title = m.detail || '';
++
++    tr.append(tdTime, tdDir, tdSrc, tdDst, tdText, tdTransport, tdStatus);
++    rows.appendChild(tr);
++  }
++  $('empty').style.display = messages.length ? 'none' : 'block';
++}
++
++async function loadStatus(){
++  try {
++    const s = await getJSON('/api/status');
++    maxLen = s.web.max_text_length || 67;
++    $('module').textContent = s.web.module ? '· modul ' + s.web.module : '';
++    $('version').textContent = s.web.version ? 'v' + s.web.version : '';
++    $('src').textContent = s.web.default_source || '';
++    const users = (s.aprs && s.aprs.users) || [];
++    setPill('p-aprs', 'APRS-IS: ' + (s.aprs && s.aprs.connected ? 'připojeno' : 'odpojeno'),
++            !!(s.aprs && s.aprs.connected),
++            (s.aprs ? s.aprs.callsign + ' · ' + s.aprs.server + ' · ' + users.length + ' uživatelů' : ''));
++    const clients = s.clients || [];
++    const n = clients.length;
++    const word = n === 1 ? 'klient' : (n >= 2 && n <= 4 ? 'klienti' : 'klientů');
++    setPill('p-rf', 'RF: ' + n + ' ' + word, n > 0,
++            clients.length ? clients.map(function(c){ return c.callsign + ' · ' + c.addr + ' · modul ' + c.module; }).join('\n')
++                           : 'žádné rádio se nepřihlásilo');
++    const counters = s.counters || {};
++    let total = 0;
++    for (const k in counters) total += counters[k];
++    $('p-count').textContent = 'zpráv: ' + total;
++  } catch (e) {
++    setPill('p-aprs', 'APRS-IS: ?', false, e.message);
++    setPill('p-rf', 'RF: ?', false, e.message);
++  }
++}
++
++async function loadMessages(){
++  try {
++    const params = new URLSearchParams({limit:'200', direction:$('direction').value, q:$('query').value});
++    const j = await getJSON('/api/messages?' + params.toString());
++    render(j.messages || []);
++  } catch (e) {
++    /* keep the last table on a transient error */
++  }
++}
++
++async function send(){
++  const to = $('to').value.trim();
++  const text = $('text').value.trim();
++  if (!to){ setResult('Zadej volací znak, komu se má zpráva poslat.', false); return; }
++  if (!text){ setResult('Zadej text zprávy.', false); return; }
++  if (text.length > maxLen){ setResult('Text je delší než ' + maxLen + ' znaků.', false); return; }
++
++  const button = $('send');
++  button.disabled = true;
++  try {
++    const r = await fetch('/api/messages/send', {
++      method:'POST',
++      headers:{'Content-Type':'application/json'},
++      body: JSON.stringify({to:to, text:text})
++    });
++    let body = null;
++    try { body = await r.json(); } catch (e) { body = null; }
++    if (!r.ok){
++      const detail = body && body.error ? body.error : ('HTTP ' + r.status);
++      setResult('Nepodařilo se odeslat: ' + detail, false);
++      return;
++    }
++    setResult('Odesláno na RF: ' + body.src + ' → ' + body.dst + ' „' + body.text + '“', true);
++    $('text').value = '';
++    loadMessages();
++  } catch (e) {
++    setResult('Nepodařilo se odeslat: ' + e.message, false);
++  } finally {
++    button.disabled = false;
++  }
++}
++
++function setResult(message, ok){
++  const el = $('result');
++  el.textContent = message;
++  el.className = 'result ' + (ok ? 'ok' : 'bad');
++}
++
++$('send').addEventListener('click', send);
++$('text').addEventListener('keydown', function(e){ if (e.key === 'Enter') send(); });
++$('to').addEventListener('keydown', function(e){ if (e.key === 'Enter') $('text').focus(); });
++$('direction').addEventListener('change', loadMessages);
++let queryTimer = null;
++$('query').addEventListener('input', function(){
++  clearTimeout(queryTimer);
++  queryTimer = setTimeout(loadMessages, 300);
++});
++
++loadStatus();
++loadMessages();
++setInterval(loadStatus, 10000);
++setInterval(loadMessages, 3000);
++</script>
++</body>
++</html>
+diff --git a/web/web.go b/web/web.go
+new file mode 100644
+index 0000000..ddc2d94
+--- /dev/null
++++ b/web/web.go
+@@ -0,0 +1,250 @@
++package web
++
++import (
++	_ "embed"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"log"
++	"net"
++	"net/http"
++	"regexp"
++	"strconv"
++	"strings"
++	"sync"
++	"time"
++
++	"github.com/jancona/m17/inet"
++	"github.com/jancona/m17/server"
++)
++
++//go:embed ui.html
++var uiHTML []byte
++
++var (
++	// ErrNoClients means no radio is connected to the bridge module, so a
++	// message sent from the web would go nowhere.
++	ErrNoClients = errors.New("no radio is connected to the bridge module")
++	// ErrRateLimited protects the shared RF channel from a burst of messages.
++	ErrRateLimited = errors.New("sending too fast, wait a moment")
++	// ErrBadCallsign means the destination cannot be encoded as M17.
++	ErrBadCallsign = errors.New("invalid destination callsign")
++)
++
++// callsignRegex matches what an operator may type: a ham callsign with an
++// optional numeric SSID, e.g. OK1ABC or OK1ABC 7.
++var callsignRegex = regexp.MustCompile(`^[A-Z0-9]{1,3}[0-9][A-Z]{1,4}( [0-9]{1,2})?$`)
++
++// Bridge is the part of the bridge that the dashboard needs.
++type Bridge interface {
++	Module() byte
++	Version() string
++	Uptime() time.Duration
++	Clients() []inet.ClientInfo
++	APRSStatus() server.APRSStatus
++	SendSMS(to, text string) error
++	Store() *Store
++}
++
++// Config is the [Web] section of m17-bridge.ini.
++type Config struct {
++	ListenAddress   string
++	ListenPort      string
++	DefaultSource   string
++	MaxTextLength   int
++	MinSendInterval time.Duration
++}
++
++// Server serves the dashboard and its JSON API.
++type Server struct {
++	cfg    Config
++	bridge Bridge
++	http   *http.Server
++
++	mu       sync.Mutex
++	lastSend time.Time
++}
++
++// NewServer prepares the dashboard; Start serves it.
++func NewServer(cfg Config, bridge Bridge) *Server {
++	if cfg.ListenPort == "" {
++		cfg.ListenPort = "17080"
++	}
++	if cfg.MaxTextLength <= 0 {
++		cfg.MaxTextLength = 67
++	}
++	if cfg.MinSendInterval <= 0 {
++		cfg.MinSendInterval = 2 * time.Second
++	}
++	return &Server{cfg: cfg, bridge: bridge}
++}
++
++// Start serves the dashboard until Close is called.  It blocks, so the bridge
++// runs it in its own goroutine.
++func (s *Server) Start() error {
++	addr := net.JoinHostPort(s.cfg.ListenAddress, s.cfg.ListenPort)
++	s.http = &http.Server{
++		Addr:              addr,
++		Handler:           s.handler(),
++		ReadHeaderTimeout: 5 * time.Second,
++	}
++	log.Printf("[INFO] Web dashboard on http://%s", addr)
++	if err := s.http.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
++		return err
++	}
++	return nil
++}
++
++// handler builds the dashboard routes.
++func (s *Server) handler() http.Handler {
++	mux := http.NewServeMux()
++	mux.HandleFunc("GET /{$}", s.handleUI)
++	mux.HandleFunc("GET /healthz", s.handleHealth)
++	mux.HandleFunc("GET /api/status", s.handleStatus)
++	mux.HandleFunc("GET /api/messages", s.handleMessages)
++	mux.HandleFunc("POST /api/messages/send", s.handleSend)
++	return mux
++}
++
++// Close stops the HTTP server.
++func (s *Server) Close() error {
++	if s.http == nil {
++		return nil
++	}
++	return s.http.Close()
++}
++
++func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
++	w.Header().Set("Content-Type", "text/html; charset=utf-8")
++	w.Header().Set("Cache-Control", "no-store")
++	_, _ = w.Write(uiHTML)
++}
++
++func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
++	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
++	_, _ = w.Write([]byte("ok\n"))
++}
++
++func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
++	writeJSON(w, http.StatusOK, map[string]any{
++		"web": map[string]any{
++			"version":         s.bridge.Version(),
++			"uptime_s":        int(s.bridge.Uptime().Seconds()),
++			"module":          string(s.bridge.Module()),
++			"default_source":  s.cfg.DefaultSource,
++			"max_text_length": s.cfg.MaxTextLength,
++		},
++		"aprs":     s.bridge.APRSStatus(),
++		"clients":  s.bridge.Clients(),
++		"counters": s.bridge.Store().Counts(),
++	})
++}
++
++func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
++	q := r.URL.Query()
++	limit, _ := strconv.Atoi(q.Get("limit"))
++	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
++	messages := s.bridge.Store().List(limit, since, q.Get("direction"), q.Get("q"))
++	writeJSON(w, http.StatusOK, map[string]any{
++		"messages": messages,
++		"last_id":  s.bridge.Store().LastID(),
++	})
++}
++
++type sendRequest struct {
++	To   string `json:"to"`
++	Text string `json:"text"`
++}
++
++func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
++	var req sendRequest
++	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
++		writeError(w, http.StatusBadRequest, "invalid JSON body")
++		return
++	}
++	to, err := normalizeCallsign(req.To)
++	if err != nil {
++		writeError(w, http.StatusBadRequest, err.Error())
++		return
++	}
++	text := strings.TrimSpace(req.Text)
++	switch {
++	case text == "":
++		writeError(w, http.StatusBadRequest, "empty message text")
++		return
++	case len([]rune(text)) > s.cfg.MaxTextLength:
++		writeError(w, http.StatusBadRequest,
++			fmt.Sprintf("message text is longer than %d characters", s.cfg.MaxTextLength))
++		return
++	}
++	if err := s.allowSend(); err != nil {
++		writeError(w, http.StatusTooManyRequests, err.Error())
++		return
++	}
++	if err := s.bridge.SendSMS(to, text); err != nil {
++		status := http.StatusInternalServerError
++		switch {
++		case errors.Is(err, ErrNoClients):
++			status = http.StatusConflict
++		case errors.Is(err, ErrBadCallsign):
++			status = http.StatusBadRequest
++		}
++		writeError(w, status, err.Error())
++		return
++	}
++
++	m := s.bridge.Store().Add(Message{
++		Direction: "web2rf",
++		Module:    string(s.bridge.Module()),
++		Src:       s.cfg.DefaultSource,
++		Dst:       to,
++		Type:      "SMS",
++		Text:      text,
++		Transport: "RF",
++		Status:    "sent",
++		Detail:    "sent from the web dashboard",
++	})
++	log.Printf("[INFO] WEB2RF %s>%s: %q (sent)", m.Src, m.Dst, m.Text)
++	writeJSON(w, http.StatusCreated, m)
++}
++
++// allowSend applies the minimum interval between two messages sent from the
++// web, so the shared RF channel is not flooded.
++func (s *Server) allowSend() error {
++	if s.cfg.MinSendInterval <= 0 {
++		return nil
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if since := time.Since(s.lastSend); since < s.cfg.MinSendInterval {
++		return fmt.Errorf("%w (%.1fs)", ErrRateLimited, s.cfg.MinSendInterval.Seconds()-since.Seconds())
++	}
++	s.lastSend = time.Now()
++	return nil
++}
++
++// normalizeCallsign accepts what an operator types ("OK1ABC-7") and returns
++// the M17 spelling ("OK1ABC 7"), upper case.
++func normalizeCallsign(in string) (string, error) {
++	cs := strings.ToUpper(strings.TrimSpace(in))
++	cs = strings.Join(strings.Fields(strings.ReplaceAll(cs, "-", " ")), " ")
++	if cs == "" {
++		return "", fmt.Errorf("%w: missing destination", ErrBadCallsign)
++	}
++	if !callsignRegex.MatchString(cs) {
++		return "", fmt.Errorf("%w: '%s'", ErrBadCallsign, in)
++	}
++	return cs, nil
++}
++
++func writeJSON(w http.ResponseWriter, status int, v any) {
++	w.Header().Set("Content-Type", "application/json; charset=utf-8")
++	w.WriteHeader(status)
++	enc := json.NewEncoder(w)
++	enc.SetIndent("", "  ")
++	_ = enc.Encode(v)
++}
++
++func writeError(w http.ResponseWriter, status int, msg string) {
++	writeJSON(w, status, map[string]string{"error": msg})
++}
+diff --git a/web/web_test.go b/web/web_test.go
+new file mode 100644
+index 0000000..f8fc346
+--- /dev/null
++++ b/web/web_test.go
+@@ -0,0 +1,244 @@
++package web
++
++import (
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/jancona/m17/inet"
++	"github.com/jancona/m17/server"
++)
++
++type fakeBridge struct {
++	store   *Store
++	clients []inet.ClientInfo
++	sendErr error
++	sent    []string
++}
++
++func (f *fakeBridge) Module() byte               { return 'A' }
++func (f *fakeBridge) Version() string            { return "test" }
++func (f *fakeBridge) Uptime() time.Duration      { return time.Minute }
++func (f *fakeBridge) Clients() []inet.ClientInfo { return f.clients }
++func (f *fakeBridge) Store() *Store              { return f.store }
++
++func (f *fakeBridge) APRSStatus() server.APRSStatus {
++	return server.APRSStatus{
++		Server:    "euro.aprs2.net",
++		Callsign:  "OK1LBC",
++		Connected: true,
++		Users:     []server.APRSUser{{M17: "OK1ABC", APRS: "OK1ABC-1"}},
++	}
++}
++
++func (f *fakeBridge) SendSMS(to, text string) error {
++	if f.sendErr != nil {
++		return f.sendErr
++	}
++	f.sent = append(f.sent, to+"|"+text)
++	return nil
++}
++
++func newTestServer(t *testing.T, fb *fakeBridge, interval time.Duration) *Server {
++	t.Helper()
++	store, err := NewStore("", 50)
++	if err != nil {
++		t.Fatalf("NewStore: %v", err)
++	}
++	t.Cleanup(func() { store.Close() })
++	fb.store = store
++	return NewServer(Config{
++		ListenAddress:   "127.0.0.1",
++		DefaultSource:   "OK1LBC",
++		MaxTextLength:   20,
++		MinSendInterval: interval,
++	}, fb)
++}
++
++func do(t *testing.T, srv *Server, method, target, body string) *httptest.ResponseRecorder {
++	t.Helper()
++	req := httptest.NewRequest(method, target, strings.NewReader(body))
++	rec := httptest.NewRecorder()
++	srv.handler().ServeHTTP(rec, req)
++	return rec
++}
++
++func TestSendFromWeb(t *testing.T) {
++	fb := &fakeBridge{clients: []inet.ClientInfo{{Callsign: "OK1LBC", Module: "A", Addr: "192.168.1.207:34940"}}}
++	srv := newTestServer(t, fb, 0)
++
++	rec := do(t, srv, http.MethodPost, "/api/messages/send", `{"to":"ok1abc-7","text":"Ahoj z webu"}`)
++	if rec.Code != http.StatusCreated {
++		t.Fatalf("status = %d (%s), want 201", rec.Code, rec.Body.String())
++	}
++	var m Message
++	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
++		t.Fatalf("decode: %v", err)
++	}
++	if m.Src != "OK1LBC" || m.Dst != "OK1ABC 7" || m.Direction != "web2rf" {
++		t.Errorf("message = %+v", m)
++	}
++	if len(fb.sent) != 1 || fb.sent[0] != "OK1ABC 7|Ahoj z webu" {
++		t.Errorf("bridge got %v", fb.sent)
++	}
++	if got := srv.bridge.Store().List(0, 0, "web2rf", ""); len(got) != 1 {
++		t.Errorf("store holds %d web2rf messages, want 1", len(got))
++	}
++}
++
++func TestSendWithoutRadio(t *testing.T) {
++	fb := &fakeBridge{sendErr: ErrNoClients}
++	srv := newTestServer(t, fb, 0)
++
++	rec := do(t, srv, http.MethodPost, "/api/messages/send", `{"to":"OK1ABC","text":"Ahoj"}`)
++	if rec.Code != http.StatusConflict {
++		t.Fatalf("status = %d (%s), want 409", rec.Code, rec.Body.String())
++	}
++	if got := srv.bridge.Store().List(0, 0, "", ""); len(got) != 0 {
++		t.Errorf("failed message was stored: %+v", got)
++	}
++}
++
++func TestSendValidation(t *testing.T) {
++	srv := newTestServer(t, &fakeBridge{}, 0)
++
++	cases := []struct {
++		name string
++		body string
++		want int
++	}{
++		{"bad json", `{`, http.StatusBadRequest},
++		{"empty destination", `{"to":"","text":"Ahoj"}`, http.StatusBadRequest},
++		{"bad destination", `{"to":"nonsense","text":"Ahoj"}`, http.StatusBadRequest},
++		{"empty text", `{"to":"OK1ABC","text":"   "}`, http.StatusBadRequest},
++		{"too long", `{"to":"OK1ABC","text":"123456789012345678901"}`, http.StatusBadRequest},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			if rec := do(t, srv, http.MethodPost, "/api/messages/send", tc.body); rec.Code != tc.want {
++				t.Errorf("status = %d (%s), want %d", rec.Code, rec.Body.String(), tc.want)
++			}
++		})
++	}
++}
++
++func TestSendRateLimited(t *testing.T) {
++	fb := &fakeBridge{}
++	srv := newTestServer(t, fb, 2*time.Second)
++
++	if rec := do(t, srv, http.MethodPost, "/api/messages/send", `{"to":"OK1ABC","text":"prvni"}`); rec.Code != http.StatusCreated {
++		t.Fatalf("first send = %d (%s), want 201", rec.Code, rec.Body.String())
++	}
++	rec := do(t, srv, http.MethodPost, "/api/messages/send", `{"to":"OK1ABC","text":"druha"}`)
++	if rec.Code != http.StatusTooManyRequests {
++		t.Fatalf("second send = %d (%s), want 429", rec.Code, rec.Body.String())
++	}
++	if len(fb.sent) != 1 {
++		t.Errorf("bridge sent %v, want only the first message", fb.sent)
++	}
++}
++
++func TestMessagesAndStatus(t *testing.T) {
++	srv := newTestServer(t, &fakeBridge{}, 0)
++	srv.bridge.Store().Record(server.MessageRecord{
++		Direction: "rf2aprs",
++		Src:       "OK1ABC",
++		Dst:       "OK1XYZ",
++		Text:      "z radia",
++		Transport: "APRS-IS",
++	})
++
++	rec := do(t, srv, http.MethodGet, "/api/messages?direction=rf2aprs&q=ok1abc", "")
++	if rec.Code != http.StatusOK {
++		t.Fatalf("messages status = %d", rec.Code)
++	}
++	var list struct {
++		Messages []Message `json:"messages"`
++		LastID   int64     `json:"last_id"`
++	}
++	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
++		t.Fatalf("decode: %v", err)
++	}
++	if len(list.Messages) != 1 || list.LastID != 1 {
++		t.Fatalf("messages = %+v, last_id = %d", list.Messages, list.LastID)
++	}
++
++	rec = do(t, srv, http.MethodGet, "/api/status", "")
++	if rec.Code != http.StatusOK {
++		t.Fatalf("status code = %d", rec.Code)
++	}
++	var status struct {
++		Web struct {
++			DefaultSource string `json:"default_source"`
++			MaxTextLength int    `json:"max_text_length"`
++			Module        string `json:"module"`
++		} `json:"web"`
++		APRS struct {
++			Connected bool              `json:"connected"`
++			Users     []server.APRSUser `json:"users"`
++		} `json:"aprs"`
++		Counters map[string]int `json:"counters"`
++	}
++	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
++		t.Fatalf("decode status: %v", err)
++	}
++	if status.Web.DefaultSource != "OK1LBC" || status.Web.Module != "A" || status.Web.MaxTextLength != 20 {
++		t.Errorf("web status = %+v", status.Web)
++	}
++	if !status.APRS.Connected || len(status.APRS.Users) != 1 {
++		t.Errorf("aprs status = %+v", status.APRS)
++	}
++	if status.Counters["rf2aprs"] != 1 {
++		t.Errorf("counters = %v", status.Counters)
++	}
++}
++
++func TestUIAndHealth(t *testing.T) {
++	srv := newTestServer(t, &fakeBridge{}, 0)
++
++	rec := do(t, srv, http.MethodGet, "/", "")
++	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "M17 bridge") {
++		t.Errorf("GET / = %d, %d bytes", rec.Code, rec.Body.Len())
++	}
++	if rec := do(t, srv, http.MethodGet, "/healthz", ""); rec.Code != http.StatusOK {
++		t.Errorf("GET /healthz = %d", rec.Code)
++	}
++}
++
++func TestNormalizeCallsign(t *testing.T) {
++	cases := []struct {
++		in   string
++		want string
++		ok   bool
++	}{
++		{"ok1abc", "OK1ABC", true},
++		{" OK1ABC ", "OK1ABC", true},
++		{"OK1ABC-7", "OK1ABC 7", true},
++		{"OK1ABC 7", "OK1ABC 7", true},
++		{"DL1ABC", "DL1ABC", true},
++		{"OK1ABC-77", "OK1ABC 77", true},
++		{"OK1ABC-", "OK1ABC", true},
++		{"", "", false},
++		{"nonsense", "", false},
++		{"OK1ABC-777", "", false},
++	}
++	for _, tc := range cases {
++		got, err := normalizeCallsign(tc.in)
++		if tc.ok && err != nil {
++			t.Errorf("normalizeCallsign(%q) returned %v", tc.in, err)
++			continue
++		}
++		if !tc.ok {
++			if err == nil {
++				t.Errorf("normalizeCallsign(%q) unexpectedly accepted %q", tc.in, got)
++			}
++			continue
++		}
++		if got != tc.want {
++			t.Errorf("normalizeCallsign(%q) = %q, want %q", tc.in, got, tc.want)
++		}
++	}
++}
+-- 
+2.47.3
+

@@ -19,5 +19,8 @@ PrivateTmp=yes
 ProtectSystem=full
 ProtectHome=yes
 
+# Drží historii zpráv pro webový dashboard (/var/lib/m17-bridge).
+StateDirectory=m17-bridge
+
 [Install]
 WantedBy=multi-user.target

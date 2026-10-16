@@ -1,5 +1,5 @@
 Package: m17-bridge
-Version: 0.8.0-2
+Version: 0.9.0
 Section: hamradio
 Priority: optional
 Architecture: arm64
@@ -10,5 +10,7 @@ Description: M17 Messaging Bridge for APRS
  Standalone M17 inet messaging bridge configured for APRS-IS.
  It makes M17 hotspots/repeaters look like reflectors for SMS and GNSS
  position traffic and forwards messages and position reports to APRS-IS.
+ A built-in web dashboard (port 17080) lists the messages that passed
+ through the bridge and can send an M17 SMS to the connected radio.
  The package contains the bridge binary, an APRS-only configuration file
  and a systemd unit.

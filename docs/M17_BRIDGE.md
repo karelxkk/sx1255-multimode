@@ -52,3 +52,9 @@ APRS-IS --> m17-bridge -- M17 packet/stream --> multimode --> RF
 
 - `m17_packet_loopback` — M17 packet TX → RX dekóduje stejný typ, payload
   i CRC.
+
+## Webové rozhraní
+
+`m17-bridge` umí webový dashboard se seznamem odeslaných i přijatých zpráv a
+formulářem pro odeslání SMS na RF (sekce `[Web]` v konfiguraci, výchozí port
+17080). Popis, API a konfigurace jsou v [M17_BRIDGE_WEB.md](M17_BRIDGE_WEB.md).
