@@ -30,6 +30,25 @@ pro squelch). Pokus o jednorázové vyhodnocení s externím squelchem přes PTY
 modem-control linky (`TIOCMGET` → `ENOTTY`). Pro „jedno CTCSS" je nutný volný
 GPIO pin a `SQL_DET=GPIOD` v SVXLinku.
 
+## CTCSS na TX
+
+V backendu `svxlink` se `ctcss_tx` z multimode konfigurace nepoužívá. Tón na
+vysílání generuje SVXLink:
+
+```ini
+[RepeaterLogic]
+TX_CTCSS=ALWAYS
+
+[ReflectorLogic]
+TX_CTCSS=ALWAYS
+
+[Tx1]
+CTCSS_FQ=88.5
+CTCSS_LEVEL=-24
+```
+
+`TX_CTCSS` se nastavuje v logice, `CTCSS_FQ`/`CTCSS_LEVEL` v sekci vysílače.
+
 ## Instalace
 
 1. Nainstaluj SVXLink a modul `snd-aloop`:

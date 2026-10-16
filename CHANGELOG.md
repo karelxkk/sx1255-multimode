@@ -2,6 +2,15 @@
 
 Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
+## [Nepublikováno]
+
+### Opraveno
+
+- FM/SVXLink CTCSS na TX: v backendu `svxlink` se `ctcss_tx` z multimode
+  nepoužívá. Šablona SVXLinku teď zapíná `TX_CTCSS=ALWAYS` v
+  `[RepeaterLogic]`/`[ReflectorLogic]` a nastavuje `CTCSS_FQ=88.5` a
+  `CTCSS_LEVEL=-24` v `[Tx1]`.
+
 ## [1.0.0-rc4] — 2026-10-16
 
 ### Přidáno
