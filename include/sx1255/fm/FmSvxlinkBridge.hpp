@@ -22,7 +22,9 @@ struct SvxlinkBridgeConfig {
     int    audioRate = 16000;
     double rxShiftHz   = 0.0;      // 0 = zero-IF; -25000 for a low-IF SX1255
     double rxMaxDevHz = 2500.0;   // discriminator -> full-scale audio
-    double txDevHz    = 2500.0;   // full-scale audio -> deviation
+    // Deviation reference: 2500 = NFM 12.5 kHz baseline, 5000 = WFM 25 kHz.
+    // tx_gain is a fine trim around this reference.
+    double txDevHz    = 2500.0;
     double txGain     = 1.75;     // 1:1 with sx1255-fm-repeater TX_GAIN
     double ctcssHz    = 88.5;     // CTCSS tone (and harmonics) to strip from RX audio
     // Audio channel shaping.  Defaults are narrow-band FM (12.5 kHz) values;

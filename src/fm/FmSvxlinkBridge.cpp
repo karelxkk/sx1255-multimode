@@ -500,8 +500,13 @@ void FmSvxlinkBridge::txThread()
         dumpAud = std::fopen("/var/lib/sx1255-multimode/fm_tx_audio.s16", "wb");
     }
     // Original: fm_mod_init(&mod, TX_GAIN * TX_AUDIO_SR / RF_SR).
+    // tx_dev_hz is the deviation reference: 2500 Hz keeps the original NFM
+    // 12.5 kHz tuning, 5000 Hz doubles it for 25 kHz wide FM.  tx_gain stays
+    // as a fine trim around that reference.
+    constexpr double kTxDevReferenceHz = 2500.0;
+    const double deviationScale = m_config.txDevHz / kTxDevReferenceHz;
     const double sensitivity = m_config.txGain *
-        static_cast<double>(m_config.audioRate) / kRfRate;
+        static_cast<double>(m_config.audioRate) / kRfRate * deviationScale;
 
     DcBlocker dc(0.995F);                       // original TX DC blocker
     FirFilter audioLpf(static_cast<float>(m_config.audioRate),

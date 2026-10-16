@@ -59,6 +59,7 @@ modes:
       sql_pty_owner: svxlink                 # vlastník slave PTY
       audio_rate: 16000
       # Deviation: NFM 12.5 kHz = 2500 Hz, WFM 25 kHz = 5000 Hz.
+      # tx_dev_hz je referenční deviation, tx_gain je jemná korekce.
       rx_max_dev_hz: 2500                   # RX max. deviation (WFM: 5000)
       tx_dev_hz: 2500                       # TX max. deviation (WFM: 5000)
       tx_gain: 1.75

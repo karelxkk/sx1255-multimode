@@ -18,6 +18,9 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
   cca -60 a zvýšení LNA na 42 dB ho nezměnilo. RSSI squelch zatím není
   implementovaný, takže se nesmyslný `squelch` klíč přestal uvádět v ukázkové
   konfiguraci (parser ho kvůli zpětné kompatibilitě pořád přijme).
+- FM/SVXLink TX: `tx_dev_hz` se už skutečně uplatní jako referenční deviation;
+  2500 Hz zachovává původní NFM 12.5 kHz ladění, 5000 Hz zdvojnásobí deviation
+  pro WFM 25 kHz. `tx_gain` zůstává jemná korekce.
 
 ## [1.0.0-rc4] — 2026-10-16
 
