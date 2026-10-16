@@ -47,8 +47,10 @@ modes:
     # harmonické procházejí, takže si je SVXLink zpracuje sám.  Filtrování
     # notchi v multimode dřív kazilo kvalitu demodulovaného zvuku.
     ctcss_rx: 88.5            # CTCSS tón, který otevírá RX
-    ctcss_tx: 88.5            # CTCSS tón generovaný na TX (0 = negenerovat;
-                              # při 0 se opakuje tón z přijímaného audia)
+    # 0 = multimode tón na TX negeneruje.  Při backendu svxlink ho generuje
+    # SVXLink sám (TX_CTCSS=ALWAYS a CTCSS_LEVEL v sekci [Tx1]); při backendu
+    # local si tón musí vyrobit multimode, proto tam patří 88.5.
+    ctcss_tx: 0               # CTCSS tón generovaný na TX (88.5 pro local)
     hang_time_ms: 3000        # dojezd po ztrátě nosné
 
     # backend: local  = multimode sám dělá FM převaděč (CTCSS RX/TX, hang)
