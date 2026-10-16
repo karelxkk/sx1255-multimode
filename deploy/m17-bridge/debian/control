@@ -1,0 +1,14 @@
+Package: m17-bridge
+Version: 0.8.0-1
+Section: hamradio
+Priority: optional
+Architecture: arm64
+Depends: systemd, libc6 (>= 2.34)
+Maintainer: Karel Kadlec (OK1LBC) <xkk@post.cz>
+Homepage: https://github.com/jancona/m17
+Description: M17 Messaging Bridge for APRS
+ Standalone M17 inet messaging bridge configured for APRS-IS.
+ It makes M17 hotspots/repeaters look like reflectors for SMS and GNSS
+ position traffic and forwards messages and position reports to APRS-IS.
+ The package contains the bridge binary, an APRS-only configuration file
+ and a systemd unit.

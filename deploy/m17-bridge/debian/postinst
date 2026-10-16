@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+
+if ! getent group m17-bridge >/dev/null; then
+    groupadd --system m17-bridge
+fi
+
+if ! getent passwd m17-bridge >/dev/null; then
+    useradd --system --gid m17-bridge --shell /bin/false m17-bridge
+fi
+
+chown root:m17-bridge /etc/m17-bridge.ini
+chmod 0640 /etc/m17-bridge.ini
+
+systemctl daemon-reload >/dev/null 2>&1 || true
+systemctl enable m17-bridge.service >/dev/null 2>&1 || true
+
+echo "m17-bridge nainstalován. Uprav APRS volací znak v /etc/m17-bridge.ini,"
+echo "pak spusť: sudo systemctl start m17-bridge"
+echo "Log: journalctl -u m17-bridge -f"

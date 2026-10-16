@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+
+if [ "$1" = "purge" ]; then
+    if getent passwd m17-bridge >/dev/null; then
+        userdel m17-bridge >/dev/null 2>&1 || true
+    fi
+    if getent group m17-bridge >/dev/null; then
+        groupdel m17-bridge >/dev/null 2>&1 || true
+    fi
+fi
+
+exit 0

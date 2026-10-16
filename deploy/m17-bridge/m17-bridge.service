@@ -1,0 +1,23 @@
+[Unit]
+Description=M17 Messaging Bridge (APRS)
+Documentation=https://github.com/jancona/m17
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=m17-bridge
+Group=m17-bridge
+ExecStart=/usr/bin/m17-bridge -config /etc/m17-bridge.ini
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
