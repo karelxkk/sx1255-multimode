@@ -235,8 +235,6 @@ private:
         bridgeCfg.rxMaxDevHz    = m_config.svxlink.rxMaxDevHz;
         bridgeCfg.txDevHz       = m_config.svxlink.txDevHz;
         bridgeCfg.txGain        = m_config.svxlink.txGain;
-        bridgeCfg.deemphTau     = m_config.svxlink.rxDeemphUs * 1e-6;
-        bridgeCfg.preemphTau    = m_config.svxlink.txPreemphUs * 1e-6;
         bridgeCfg.rxAudioLpHz   = m_config.svxlink.rxAudioLpfHz;
         bridgeCfg.txAudioLpHz   = m_config.svxlink.txAudioLpfHz;
         m_bridge = std::make_unique<fm::FmSvxlinkBridge>(bridgeCfg);

@@ -70,14 +70,11 @@ modes:
       rx_max_dev_hz: 2500                   # RX max. deviation (WFM: 5000)
       tx_dev_hz: 2500                       # TX max. deviation (WFM: 5000)
       tx_gain: 1.75
-      # Zvukové tvarování: NFM 12.5 kHz = 3000 Hz / 75 us,
-      # WFM 25 kHz = cca 4500-5000 Hz a pre/de-emfáze dle normy (často 50 us).
-      # Při backendu svxlink tu patří 0: audio jde do SVXLinku přímo z
-      # diskriminátoru a SVXLink moduluje modulátor přímo, takže emfázi dělá on
-      # ([Rx1] DEEMPHASIS=1, [Tx1] PREEMPHASIS=1).  Nenulová hodnota znamená, že
-      # si ji multimode udělá sám (backend local, WFM často 50 us).
-      rx_deemph_us: 0             # RX de-emfáze (0 = dělá SVXLink)
-      tx_preemph_us: 0            # TX pre-emfáze (0 = dělá SVXLink)
+      # Zvukové tvarování: NFM 12.5 kHz = 3000 Hz, WFM 25 kHz = 4500-5000 Hz.
+      # De-emfázi a pre-emfázi tady multimode neřeší - v této cestě jde audio
+      # do SVXLinku přímo z diskriminátoru a SVXLink moduluje modulátor přímo,
+      # takže je dělá SVXLink ([Rx1] DEEMPHASIS=1, [Tx1] PREEMPHASIS=1).
+      # (Backend local si je dělá sám, tam k žádnému SVXLinku není.)
       rx_audio_lpf_hz: 3000       # RX audio LPF (WFM: 4500-5000)
       tx_audio_lpf_hz: 3000       # TX audio LPF (WFM: 4500-5000)
       # CTCSS na TX v backendu svxlink generuje SVXLink:
