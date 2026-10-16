@@ -102,12 +102,6 @@ public:
         const float confidence = static_cast<float>(
             std::clamp(1.0 - noise / (2.0 * m_config.squelchNoiseRatio), 0.0, 1.0));
 
-        // Drive the SVXLink squelch from the local carrier even outside an FM
-        // session, so a local station can key up during SVXLink's hang tail
-        // (state ACTIVE_SVXLINK) without waiting for a new session.
-        if (m_useSvxlink)
-            driveSql(detected, std::chrono::steady_clock::now());
-
         if (detected && m_stats)
             m_stats->recordDetection(Mode::FM);
         m_lastConfidence = confidence;
