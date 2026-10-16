@@ -10,6 +10,8 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
   nepoužívá. Šablona SVXLinku teď zapíná `TX_CTCSS=ALWAYS` v
   `[RepeaterLogic]`/`[ReflectorLogic]` a nastavuje `CTCSS_FQ=88.5` a
   `CTCSS_LEVEL=-24` v `[Tx1]`.
+- `ctcss_tx` je v ukázkové konfiguraci zakomentovaný s vysvětlením, že se
+  používá jen pro `backend: local`; v backendu `svxlink` tón generuje SVXLink.
 
 ## [1.0.0-rc4] — 2026-10-16
 

@@ -29,9 +29,10 @@ modes:
   fm:
     enabled: true
     ctcss_rx: 88.5
-    # V backendu svxlink se ctcss_tx nepoužívá; tón na TX generuje SVXLink:
-    # [RepeaterLogic]/[ReflectorLogic] TX_CTCSS=ALWAYS, [Tx1] CTCSS_FQ/LEVEL.
-    ctcss_tx: 88.5
+    # ctcss_tx se používá jen při backend: local. V backendu svxlink tón na TX
+    # generuje SVXLink: [RepeaterLogic]/[ReflectorLogic] TX_CTCSS=ALWAYS,
+    # [Tx1] CTCSS_FQ=88.5, CTCSS_LEVEL=-24.
+    # ctcss_tx: 88.5
     hang_time_ms: 3000
     # backend: local  = interní RX->TX bridge (výchozí)
     # backend: svxlink = SVXLink dělá logiku/síť, multimode je RF<->audio bridge
