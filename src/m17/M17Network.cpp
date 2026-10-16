@@ -157,6 +157,24 @@ bool M17ReflectorClient::sendStream(const StreamDatagram& datagram)
     return true;
 }
 
+bool M17ReflectorClient::sendPacket(const std::vector<std::uint8_t>& packetBytes)
+{
+    if (m_fd < 0 || !m_connected.load())
+        return false;
+    if (packetBytes.size() < 4)
+        return false;
+
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(MagicLen + packetBytes.size());
+    bytes.insert(bytes.end(), MagicM17Packet, MagicM17Packet + MagicLen);
+    bytes.insert(bytes.end(), packetBytes.begin(), packetBytes.end());
+
+    if (::send(m_fd, bytes.data(), bytes.size(), 0) != static_cast<ssize_t>(bytes.size()))
+        return false;
+    m_txPackets++;
+    return true;
+}
+
 M17ReflectorClient::Telemetry M17ReflectorClient::telemetry() const
 {
     Telemetry t;

@@ -56,6 +56,10 @@ add_executable(test_m17_loopback test_m17_loopback.cpp)
 target_link_libraries(test_m17_loopback PRIVATE sx1255_core)
 add_test(NAME m17_loopback COMMAND test_m17_loopback)
 
+add_executable(test_m17_packet_loopback test_m17_packet_loopback.cpp)
+target_link_libraries(test_m17_packet_loopback PRIVATE sx1255_core)
+add_test(NAME m17_packet_loopback COMMAND test_m17_packet_loopback)
+
 add_executable(test_m17_tx_chain test_m17_tx_chain.cpp)
 target_link_libraries(test_m17_tx_chain PRIVATE sx1255_core)
 add_test(NAME m17_tx_chain COMMAND test_m17_tx_chain)

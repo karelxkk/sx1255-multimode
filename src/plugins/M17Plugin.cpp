@@ -84,8 +84,13 @@ public:
                   m_lastActivity = std::chrono::steady_clock::now();
                   forwardStream(lsf, sid, fn, {}, true);
               },
-              [this](const m17::LSF&, const std::vector<std::uint8_t>&, double) {  // onPacket
+              [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload, double) {  // onPacket
                   m_lastActivity = std::chrono::steady_clock::now();
+                  if (!m_reflector)
+                      return;
+                  std::vector<std::uint8_t> packetBytes = lsf.toBytes();
+                  packetBytes.insert(packetBytes.end(), payload.begin(), payload.end());
+                  m_reflector->sendPacket(packetBytes);
               }})
         , m_m17Config(std::move(config))
         , m_stats(stats)
@@ -106,7 +111,9 @@ public:
                     }
                     m_txCv.notify_one();
                 },
-                m17::M17ReflectorClient::PacketHandler{});
+                [this](const std::vector<std::uint8_t>& packet) {
+                    processNetworkPacket(packet);
+                });
             m_reflector->start();
             m_networkTxThread = std::thread([this] {
                 for (;;) {
@@ -341,6 +348,59 @@ private:
                 arbiter->releaseTx();
             m_netTxGranted = false;
         }
+    }
+
+    void processNetworkPacket(const std::vector<std::uint8_t>& packetBytes)
+    {
+        if (packetBytes.size() < m17::LSFLen + 3)
+            return;
+        if (m_active.load())
+            return;
+
+        ITransmit* tx = m_tx.load();
+        ITxArbiter* arbiter = m_arbiter.load();
+        if (!tx || !arbiter)
+            return;
+
+        std::lock_guard<std::mutex> lock(m_txMutex);
+        // A continuous network stream owns the TX chain; do not inject a
+        // packet into the middle of it.
+        if (m_txActive || m_netTxGranted)
+            return;
+        if (!arbiter->acquireTx(Mode::M17))
+            return;
+
+        const m17::LSF lsf = m17::LSF::newFromBytes(packetBytes.data());
+        const std::vector<std::uint8_t> packetPayload(
+            packetBytes.begin() + static_cast<std::ptrdiff_t>(m17::LSFLen),
+            packetBytes.end());
+        const std::vector<m17::Symbol> symbols =
+            m17::generatePacketSymbols(lsf, packetPayload);
+
+        m_txShaper.reset();
+        m_txResampler.reset();
+        m_txFMMod.reset();
+        std::vector<double> baseband = m_txShaper.process(symbols);
+        for (double& b : baseband)
+            b *= std::sqrt(5.0);
+        const std::vector<double> resampled = m_txResampler.process(baseband);
+        const std::vector<m17::CD> iq = m_txFMMod.modulate(resampled, 800.0);
+
+        std::vector<ComplexFloat> out(iq.size());
+        for (std::size_t i = 0; i < iq.size(); ++i)
+            out[i] = {static_cast<float>(iq[i].re), static_cast<float>(iq[i].im)};
+
+        tx->setPtt(true);
+        tx->writeIQ(out.data(), out.size());
+        tx->drainTx();
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
+        tx->setPtt(false);
+        arbiter->releaseTx();
+
+        std::fprintf(stderr,
+                     "M17 NET TX packet: dst=%s src=%s payload=%zu bytes\n",
+                     lsf.dstCallsign().c_str(), lsf.srcCallsign().c_str(),
+                     packetPayload.size());
     }
 
     void forwardStream(const m17::LSF& lsf, std::uint16_t sid, std::uint16_t fn,

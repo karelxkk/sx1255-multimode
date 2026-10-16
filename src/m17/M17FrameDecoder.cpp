@@ -456,6 +456,48 @@ std::vector<Symbol> generateStreamSymbols(const LSF& lsf, std::uint16_t frameNum
     return appendBits(std::move(syms), rfBits);
 }
 
+std::vector<Symbol> generatePacketSymbols(const LSF& lsf,
+                                          const std::vector<std::uint8_t>& packetPayload)
+{
+    std::vector<Symbol> syms = appendPreamble({}, false);
+    const std::vector<Symbol> lsfSymbols = generateLSFSymbols(lsf);
+    syms.insert(syms.end(), lsfSymbols.begin(), lsfSymbols.end());
+
+    constexpr std::size_t kChunkBytes = 25;
+    std::size_t chunkCnt = 0;
+    const std::vector<bool> pp(PacketPuncturePattern.begin(), PacketPuncturePattern.end());
+
+    for (std::size_t offset = 0; offset < packetPayload.size(); offset += kChunkBytes) {
+        syms = appendSyncwordSymbols(std::move(syms), PacketSync);
+
+        std::array<std::uint8_t, kChunkBytes + 1> chunk{};
+        const std::size_t bytesLeft = packetPayload.size() - offset;
+        const std::size_t n = std::min(bytesLeft, kChunkBytes);
+        std::copy_n(packetPayload.begin() + static_cast<std::ptrdiff_t>(offset),
+                    n, chunk.begin());
+
+        if (bytesLeft > kChunkBytes) {
+            chunk[kChunkBytes] = static_cast<std::uint8_t>(chunkCnt << 2);
+        } else {
+            chunk[kChunkBytes] = static_cast<std::uint8_t>(
+                (1u << 7) | (static_cast<unsigned int>(n) << 2));
+        }
+
+        const std::vector<std::uint8_t> chunkBytes(chunk.begin(), chunk.end());
+        const std::vector<Bit> b =
+            convolutionalEncode(chunkBytes, pp, PacketModeFinalBit);
+        PayloadBits encodedBits{};
+        for (std::size_t i = 0; i < b.size() && i < encodedBits.size(); ++i)
+            encodedBits[i] = b[i];
+        PayloadBits rfBits = interleaveBits(encodedBits);
+        randomizeBits(rfBits);
+        syms = appendBits(std::move(syms), rfBits);
+        ++chunkCnt;
+    }
+
+    return appendEOT(std::move(syms));
+}
+
 // ---------------------------------------------------------------------------
 // Golay(24,12) (golay.go)
 // ---------------------------------------------------------------------------
@@ -823,7 +865,10 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
             std::copy_n(pktFrame.begin(), 25, m_packetData.begin() + static_cast<std::ptrdiff_t>(start));
             m_lastPacketFN++;
         } else if (lastFrame) {
-            const std::size_t start = static_cast<std::size_t>(m_lastPacketFN + 1) * 25;
+            // m_lastPacketFN is uint8_t: 0xff + 1 must wrap to 0 for the
+            // first (and possibly only) packet frame.
+            const std::uint8_t nextFrame = static_cast<std::uint8_t>(m_lastPacketFN + 1);
+            const std::size_t start = static_cast<std::size_t>(nextFrame) * 25;
             const std::size_t end = start + frameNumOrByteCnt;
             std::copy_n(pktFrame.begin(), frameNumOrByteCnt,
                         m_packetData.begin() + static_cast<std::ptrdiff_t>(start));

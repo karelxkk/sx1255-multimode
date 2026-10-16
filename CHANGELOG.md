@@ -4,8 +4,20 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ## [Nepublikováno]
 
+### Přidáno
+
+- M17 packet mode TX (`generatePacketSymbols`) a přenos packet datagramů
+  přes `M17ReflectorClient::sendPacket`.
+- M17 plugin přeposílá packet rámce z RF do M17 inet klienta a naopak je
+  vysílá na RF; tím funguje bridge na `m17-bridge` APRS modul pro SMS zprávy
+  a GNSS polohu.
+- Unit test `m17_packet_loopback` (packet TX → RX dekóduje stejný payload).
+
 ### Opraveno
 
+- M17 packet decoder: první (a případně jediný) packet frame po LSF se
+  špatně skládal kvůli přetečení `uint8_t` při výpočtu offsetu; nyní se
+  `0xff + 1` správně zabalí na 0.
 - FM/SVXLink CTCSS na TX: v backendu `svxlink` se `ctcss_tx` z multimode
   nepoužívá. Šablona SVXLinku teď zapíná `TX_CTCSS=ALWAYS` v
   `[RepeaterLogic]`/`[ReflectorLogic]` a nastavuje `CTCSS_FQ=88.5` a

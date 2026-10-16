@@ -70,6 +70,10 @@ std::vector<Symbol> appendEOT(std::vector<Symbol> out);
 std::vector<Symbol> generateLSFSymbols(const LSF& lsf);
 std::vector<Symbol> generateStreamSymbols(const LSF& lsf, std::uint16_t frameNumber,
                                           const std::vector<std::uint8_t>& payload);
+// Packet mode TX: LSF + packet sync + 25-byte chunks + EOT.  `packetPayload`
+// is the packet type byte followed by payload and CRC (without the LSF).
+std::vector<Symbol> generatePacketSymbols(const LSF& lsf,
+                                          const std::vector<std::uint8_t>& packetPayload);
 
 // --- Golay(24,12) (golay.go) ---
 std::uint32_t golayEncode24(std::uint16_t data);

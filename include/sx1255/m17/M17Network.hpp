@@ -95,6 +95,8 @@ public:
     void stop();
 
     bool sendStream(const StreamDatagram& datagram);
+    // Send an M17 packet datagram: LSF + packet type + payload + CRC.
+    bool sendPacket(const std::vector<std::uint8_t>& packetBytes);
 
     Telemetry telemetry() const;
 

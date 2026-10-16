@@ -92,6 +92,8 @@ modes:
     callsign: N0CALL
     reflector:
       enabled: false           # připojit se k M17 reflektor
+      # Pro M17 bridge (APRS zprávy a poloha) nasměruj host/port/module
+      # na běžící m17-bridge s APRS modulem, viz docs/M17_BRIDGE.md.
       host: reflector.example.org  # adresa reflektoru
       port: 17000             # UDP port reflektoru
       module: A               # modul reflektoru
