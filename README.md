@@ -163,6 +163,7 @@ docs/                    architektura, plugin API, UML diagramy
 - [Architektura](docs/architecture.md)
 - [Plugin API](docs/plugin-api.md)
 - [D-Star gateway (DSRP)](docs/DSTAR_GATEWAY.md)
+- [Připojení FlexNetu](docs/FLEXNET_CONNECTION.md)
 - [Session Manager](docs/session-manager.md)
 - [M17 migrace z m17-gateway](docs/M17_MIGRATION.md)
 - [M17 bridge: zprávy a poloha](docs/M17_BRIDGE.md)
