@@ -59,7 +59,6 @@ public:
                 m17::rxScalingCoeffSX1255)
         , m_synchronizer(5, [this](std::uint16_t typ, const std::vector<m17::SoftBit>& softBits) {
               const auto now = std::chrono::steady_clock::now();
-              m_lastActivity = now;
               m_frameCount++;
               m_syncCount++;
               if (typ == m17::LSFSync)
@@ -209,6 +208,9 @@ public:
                                lsf.srcCallsign().c_str(), lsf.dstCallsign().c_str());
               },
               [this](std::uint8_t field, bool lastFrame, int errors) {   // onPacketFrame
+                  // A frame the decoder actually used keeps the session alive;
+                  // an unrelated sync burst does not (see the burst callback).
+                  m_lastActivity = std::chrono::steady_clock::now();
                   if (!m_m17Config.logSync)
                       return;
                   std::fprintf(stderr, "M17 packet frame: %s=%u errors=%d\n",
