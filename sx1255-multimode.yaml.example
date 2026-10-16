@@ -58,15 +58,16 @@ modes:
       sql_pty: /run/svxlink/sql              # SQL PTY
       sql_pty_owner: svxlink                 # vlastník slave PTY
       audio_rate: 16000
-      rx_max_dev_hz: 2500
-      tx_dev_hz: 2500
+      # Deviation: NFM 12.5 kHz = 2500 Hz, WFM 25 kHz = 5000 Hz.
+      rx_max_dev_hz: 2500                   # RX max. deviation (WFM: 5000)
+      tx_dev_hz: 2500                       # TX max. deviation (WFM: 5000)
       tx_gain: 1.75
-      # Zvukové tvarování (default = NFM 12.5 kHz). Pro široké FM (25 kHz)
-      # zvedni rx_audio_lpf_hz / tx_audio_lpf_hz na ~4000-5000.
-      rx_deemph_us: 75            # RX de-emfáze
-      tx_preemph_us: 75           # TX pre-emfáze
-      rx_audio_lpf_hz: 3000       # RX audio low-pass
-      tx_audio_lpf_hz: 3000       # TX audio low-pass
+      # Zvukové tvarování: NFM 12.5 kHz = 3000 Hz / 75 us,
+      # WFM 25 kHz = cca 4500-5000 Hz a pre/de-emfáze dle normy (často 50 us).
+      rx_deemph_us: 75            # RX de-emfáze (WFM často 50)
+      tx_preemph_us: 75           # TX pre-emfáze (WFM často 50)
+      rx_audio_lpf_hz: 3000       # RX audio LPF (WFM: 4500-5000)
+      tx_audio_lpf_hz: 3000       # TX audio LPF (WFM: 4500-5000)
       # CTCSS na TX v backendu svxlink generuje SVXLink:
       #   [RepeaterLogic]/[ReflectorLogic] TX_CTCSS=ALWAYS
       #   [Tx1] CTCSS_FQ=88.5, CTCSS_LEVEL=-24
