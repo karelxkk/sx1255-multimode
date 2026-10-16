@@ -94,7 +94,10 @@ do ALSA. Díky odděleným vláknům RX běží i během TX (plný duplex).
 - RSSI **není** v registrech SX1255 (RSSI má až doprovodný čip SX1257).
   Na SX1255 se RSSI počítá z výkonu I/Q vzorků — `10*log10(mean power)`,
   přesně jako to dělá m17-gateway ve FMDemodAFC. Absolutní kalibrace v dBm
-  vyžaduje měření.
+  vyžaduje měření. Na tomto HW je naměřené minimum přibližně **-60**
+  (relativní dBFS); zvýšení LNA z 24 na 42 dB v testu hodnotu nezměnilo.
+  `squelch` v konfiguraci je proto zatím pouze informativní — FM plugin
+  otevírá squelch podle CTCSS, ne podle RSSI.
 
 ## Diagnostika
 

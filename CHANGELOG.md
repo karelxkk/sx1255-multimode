@@ -14,6 +14,10 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
   `backend: local`; v backendu `svxlink` tón generuje SVXLink.
 - Ukázková i cílová konfigurace jsou komentované po jednotlivých sekcích a
   klíčích.
+- RSSI na SX1255 je relativní (počítané z I/Q výkonu); naměřené minimum je
+  cca -60. `squelch` je proto nastavený na -60 a dokumentovaný jako
+  informativní, protože FM squelch řídí CTCSS. Zvýšení LNA na 42 dB RSSI
+  nezměnilo.
 
 ## [1.0.0-rc4] — 2026-10-16
 
