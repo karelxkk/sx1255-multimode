@@ -285,6 +285,7 @@ Config loadConfig(const std::string& path)
         config.fm.svxlink.txGain        = optDouble(*sx, "tx_gain", config.fm.svxlink.txGain);
         config.fm.svxlink.rxAudioLpfHz  = optDouble(*sx, "rx_audio_lpf_hz", config.fm.svxlink.rxAudioLpfHz);
         config.fm.svxlink.txAudioLpfHz  = optDouble(*sx, "tx_audio_lpf_hz", config.fm.svxlink.txAudioLpfHz);
+        config.fm.svxlink.rxHighPassHz  = optDouble(*sx, "rx_highpass_hz", config.fm.svxlink.rxHighPassHz);
     }
 
     const YamlNode* dstar = child(*modes, "dstar");
@@ -440,6 +441,7 @@ std::string serializeConfig(const Config& config)
     out << "      tx_gain: " << formatDouble(config.fm.svxlink.txGain) << '\n';
     out << "      rx_audio_lpf_hz: " << formatDouble(config.fm.svxlink.rxAudioLpfHz) << '\n';
     out << "      tx_audio_lpf_hz: " << formatDouble(config.fm.svxlink.txAudioLpfHz) << '\n';
+    out << "      rx_highpass_hz: " << formatDouble(config.fm.svxlink.rxHighPassHz) << '\n';
     out << "  dstar:\n";
     out << "    enabled: " << (config.dstar.enabled ? "true" : "false") << '\n';
     out << "    callsign: " << config.dstar.callsign << '\n';

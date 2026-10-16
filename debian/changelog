@@ -1,3 +1,15 @@
+sx1255-multimode (1.0.0~rc5-4) unstable; urgency=medium
+
+  * FM/SVXLink: optional high-pass (rx_highpass_hz) on the RX audio that
+    removes the sub-audible CTCSS tone and the low harmonics of a clipped
+    tone generator without carving notches into the voice band.  It is off
+    by default because SVXLink's SQL_DET=CTCSS needs the tone in the audio;
+    with the multimode driving the squelch (SQL_DET=PTY) it can be set to
+    ~300 Hz.
+  * Target configuration: SVXLink squelch switched from PTY to CTCSS.
+
+ -- Karel Kadlec (OK1LBC) <xkk@post.cz>  Sat, 17 Oct 2026 11:00:00 +0000
+
 sx1255-multimode (1.0.0~rc5-3) unstable; urgency=medium
 
   * FM/SVXLink: de-emphasis and pre-emphasis moved to SVXLink ([Rx1]

@@ -51,6 +51,12 @@ struct FmSvxlinkConfig {
     // Audio channel shaping (NFM 12.5 kHz defaults; raise for wideband/HiFi).
     double rxAudioLpfHz  = 3000.0; // RX audio low-pass corner
     double txAudioLpfHz  = 3000.0; // TX audio low-pass corner (pre-modulation)
+    // RX audio high-pass.  It removes the sub-audible CTCSS tone and the low
+    // harmonics a clipped tone generator produces from the audio that goes to
+    // SVXLink - but SVXLink's own CTCSS squelch then has no tone left to
+    // detect, so the two cannot be combined.  0 (default) keeps the tone in
+    // the audio, which is what SQL_DET=CTCSS needs.
+    double rxHighPassHz  = 0.0;
 };
 
 struct FmConfig {

@@ -77,6 +77,13 @@ modes:
       # (Backend local si je dělá sám, tam k žádnému SVXLinku není.)
       rx_audio_lpf_hz: 3000       # RX audio LPF (WFM: 4500-5000)
       tx_audio_lpf_hz: 3000       # TX audio LPF (WFM: 4500-5000)
+      # Horní propust na RX audiu odstraní subtón 88,5 Hz i nízké harmonické
+      # klíčovaného generátoru z audia, které jde do SVXLinku.  Nejde ale
+      # zkombinovat s SQL_DET=CTCSS: SVXLink by pak neměl z čeho tón detekovat.
+      #   0   = tón zůstává v audiu (potřebné pro SQL_DET=CTCSS)
+      #   ~300 = subtón se filtruje; squelch pak musí dělat multimode přes
+      #          SQL PTY (SQL_DET=PTY)
+      rx_highpass_hz: 0           # RX horní propust (0 = subtón nefiltrovat)
       # CTCSS na TX v backendu svxlink generuje SVXLink:
       #   [RepeaterLogic]/[ReflectorLogic] TX_CTCSS=ALWAYS
       #   [Tx1] CTCSS_FQ=88.5, CTCSS_LEVEL=-24

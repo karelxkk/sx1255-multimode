@@ -30,6 +30,14 @@ struct SvxlinkBridgeConfig {
     // widen `rxAudioLpHz`/`txAudioLpHz` (and the deviation) for 25 kHz wide FM.
     double rxAudioLpHz = 3000.0;  // RX audio low-pass corner
     double txAudioLpHz = 3000.0;  // TX audio low-pass corner
+    // High-pass on the RX audio.  A real repeater removes the sub-audible
+    // CTCSS tone (and the low harmonics a clipped tone generator makes) with a
+    // high-pass around 300 Hz, so the received tone is not repeated on top of
+    // the tone the repeater generates itself.  It cannot be combined with
+    // SVXLink's SQL_DET=CTCSS, which needs the tone in the audio: with that
+    // squelch, leave this at 0.  Only the TX tone from SVXLink must never be
+    // filtered, so the high-pass sits on the RX side.
+    double rxHighPassHz = 0.0;
     std::size_t queueSamples = 1u << 20;
 };
 

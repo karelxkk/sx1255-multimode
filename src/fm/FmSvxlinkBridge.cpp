@@ -157,6 +157,46 @@ private:
     ComplexFloat m_yPrev{0.0F, 0.0F};
 };
 
+// 2nd order high-pass (biquad).  Removes the sub-audible CTCSS tone and the
+// low harmonics of a clipped tone generator without touching the rest of the
+// voice band - unlike a bank of notches on every harmonic, which left the audio
+// full of holes.  A corner of 0 turns it into a passthrough.
+class HighPass {
+public:
+    HighPass(double sampleRateHz, double freqHz, double q = 0.707)
+    {
+        if (freqHz <= 0.0) {
+            m_b0 = 1.0;
+            return;
+        }
+        const double w0 = 2.0 * kPi * freqHz / sampleRateHz;
+        const double alpha = std::sin(w0) / (2.0 * q);
+        const double a0 = 1.0 + alpha;
+        const double cosw0 = std::cos(w0);
+
+        m_b0 = (1.0 + cosw0) / 2.0 / a0;
+        m_b1 = -(1.0 + cosw0) / a0;
+        m_b2 = m_b0;
+        m_a1 = -2.0 * cosw0 / a0;
+        m_a2 = (1.0 - alpha) / a0;
+    }
+
+    float process(float x)
+    {
+        const double y = m_b0 * x + m_b1 * m_x1 + m_b2 * m_x2
+                       - m_a1 * m_y1 - m_a2 * m_y2;
+        m_x2 = m_x1;
+        m_x1 = x;
+        m_y2 = m_y1;
+        m_y1 = y;
+        return static_cast<float>(y);
+    }
+
+private:
+    double m_b0 = 1.0, m_b1 = 0.0, m_b2 = 0.0, m_a1 = 0.0, m_a2 = 0.0;
+    double m_x1 = 0.0, m_x2 = 0.0, m_y1 = 0.0, m_y2 = 0.0;
+};
+
 bool openPcm(snd_pcm_t*& pcm, const std::string& device, snd_pcm_stream_t stream,
              unsigned int rate, bool nonBlocking)
 {
@@ -348,6 +388,7 @@ void FmSvxlinkBridge::rxThread()
     FmDiscriminator discriminator;
     FirFilter audioLpf(static_cast<float>(m_config.audioRate),
                        static_cast<float>(m_config.rxAudioLpHz));
+    HighPass audioHpf(static_cast<double>(m_config.audioRate), m_config.rxHighPassHz);
     int decPhase = 0;
     double rxInT = 0.0;
     double rxNextOutT = 0.0;
@@ -403,6 +444,7 @@ void FmSvxlinkBridge::rxThread()
 
             float a = rxPrevIf + static_cast<float>(frac) * (aIf - rxPrevIf);
             a = audioLpf.process(a);
+            a = audioHpf.process(a);
             a = std::clamp(a, -1.0F, 1.0F);
             audio.push_back(a);
 

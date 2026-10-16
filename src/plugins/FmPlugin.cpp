@@ -237,6 +237,7 @@ private:
         bridgeCfg.txGain        = m_config.svxlink.txGain;
         bridgeCfg.rxAudioLpHz   = m_config.svxlink.rxAudioLpfHz;
         bridgeCfg.txAudioLpHz   = m_config.svxlink.txAudioLpfHz;
+        bridgeCfg.rxHighPassHz  = m_config.svxlink.rxHighPassHz;
         m_bridge = std::make_unique<fm::FmSvxlinkBridge>(bridgeCfg);
         m_bridge->start(tx);
         m_bridge->setArbiter(m_arbiter.load());
