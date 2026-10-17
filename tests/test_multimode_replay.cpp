@@ -285,17 +285,17 @@ int main()
         return 4;
     }
 
-    // RSSI gate: the same valid M17 signal must be rejected at the noise floor
-    // and accepted when it is strong enough to open the gate.
+    // RSSI gate: the same valid M17 signal is rejected at the noise floor and
+    // accepted when strong enough.  Decoding still runs below the gate.
     {
-        Config m17Config;
-        m17Config.m17.bridge.enabled = false;
-        m17Config.m17.reflector.enabled = false;
+        M17Config m17Config;
+        m17Config.bridge.enabled = false;
+        m17Config.reflector.enabled = false;
         const auto strong = m17Iq(2000);
         const auto weak = scaled(strong, 0.001F);   // approx -60 dBFS
 
         auto feedAll = [&](const std::vector<ComplexFloat>& iq) {
-            auto plugin = createM17Plugin(m17Config.m17);
+            auto plugin = createM17Plugin(m17Config);
             bool detected = false;
             for (std::size_t off = 0; off < iq.size(); off += 2048) {
                 const IQBlock block{off, iq.data() + off,

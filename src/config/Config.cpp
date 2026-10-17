@@ -319,26 +319,9 @@ Config loadConfig(const std::string& path)
     config.m17.syncLsfSyncThreshold =
         optDouble(*m17, "sync_lsf_sync_threshold", config.m17.syncLsfSyncThreshold);
     config.m17.syncFollowThreshold = optDouble(*m17, "sync_follow_threshold", config.m17.syncFollowThreshold);
-    config.m17.trackingSyncLsfThreshold =
-        optDouble(*m17, "tracking_sync_lsf_threshold", config.m17.trackingSyncLsfThreshold);
-    config.m17.trackingSyncPacketThreshold =
-        optDouble(*m17, "tracking_sync_packet_threshold", config.m17.trackingSyncPacketThreshold);
-    config.m17.trackingSyncStreamThreshold =
-        optDouble(*m17, "tracking_sync_stream_threshold", config.m17.trackingSyncStreamThreshold);
-    config.m17.trackingSyncEotThreshold =
-        optDouble(*m17, "tracking_sync_eot_threshold", config.m17.trackingSyncEotThreshold);
-    config.m17.trackingSyncLsfSyncThreshold =
-        optDouble(*m17, "tracking_sync_lsf_sync_threshold", config.m17.trackingSyncLsfSyncThreshold);
-    config.m17.trackingSyncFollowThreshold =
-        optDouble(*m17, "tracking_sync_follow_threshold", config.m17.trackingSyncFollowThreshold);
-    config.m17.maxLsfBerPercent =
-        optDouble(*m17, "max_lsf_ber_percent", config.m17.maxLsfBerPercent);
-    config.m17.maxTrackingBerPercent =
-        optDouble(*m17, "max_tracking_ber_percent", config.m17.maxTrackingBerPercent);
-    config.m17.rssiGateDbfs =
-        optDouble(*m17, "rssi_gate_dbfs", config.m17.rssiGateDbfs);
     config.m17.minSyncBurst = static_cast<int>(optInt(*m17, "min_sync_burst", config.m17.minSyncBurst));
     config.m17.idleTimeoutMs = static_cast<int>(optInt(*m17, "idle_timeout_ms", config.m17.idleTimeoutMs));
+    config.m17.rssiGateDbfs = optDouble(*m17, "rssi_gate_dbfs", config.m17.rssiGateDbfs);
     config.m17.logSync = optBool(*m17, "log_sync", config.m17.logSync);
     config.m17.networkPacketQueue =
         static_cast<int>(optInt(*m17, "network_packet_queue", config.m17.networkPacketQueue));
@@ -485,17 +468,9 @@ std::string serializeConfig(const Config& config)
     out << "    sync_eot_threshold: " << config.m17.syncEotThreshold << '\n';
     out << "    sync_lsf_sync_threshold: " << config.m17.syncLsfSyncThreshold << '\n';
     out << "    sync_follow_threshold: " << config.m17.syncFollowThreshold << '\n';
-    out << "    tracking_sync_lsf_threshold: " << config.m17.trackingSyncLsfThreshold << '\n';
-    out << "    tracking_sync_packet_threshold: " << config.m17.trackingSyncPacketThreshold << '\n';
-    out << "    tracking_sync_stream_threshold: " << config.m17.trackingSyncStreamThreshold << '\n';
-    out << "    tracking_sync_eot_threshold: " << config.m17.trackingSyncEotThreshold << '\n';
-    out << "    tracking_sync_lsf_sync_threshold: " << config.m17.trackingSyncLsfSyncThreshold << '\n';
-    out << "    tracking_sync_follow_threshold: " << config.m17.trackingSyncFollowThreshold << '\n';
-    out << "    max_lsf_ber_percent: " << config.m17.maxLsfBerPercent << '\n';
-    out << "    max_tracking_ber_percent: " << config.m17.maxTrackingBerPercent << '\n';
-    out << "    rssi_gate_dbfs: " << config.m17.rssiGateDbfs << '\n';
     out << "    min_sync_burst: " << config.m17.minSyncBurst << '\n';
     out << "    idle_timeout_ms: " << config.m17.idleTimeoutMs << '\n';
+    out << "    rssi_gate_dbfs: " << config.m17.rssiGateDbfs << '\n';
     out << "    log_sync: " << (config.m17.logSync ? "true" : "false") << '\n';
     out << "    network_packet_queue: " << config.m17.networkPacketQueue << '\n';
     out << "    network_packet_ttl_ms: " << config.m17.networkPacketTtlMs << '\n';

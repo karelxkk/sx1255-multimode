@@ -113,27 +113,15 @@ zkontrolovat úroveň/vf cestu.
 
 ```yaml
 m17:
-  # GATE - rozhoduje, zda je na kanálu skutečné M17
-  sync_lsf_threshold: 6.0      # preamble + LSF sync (nižší = přísnější)
-  sync_packet_threshold: 4.5   # packet sync + následující rámec
-  sync_stream_threshold: 4.5   # stream sync + následující rámec
+  sync_lsf_threshold: 7.5      # preamble + LSF sync (nižší = přísnější)
+  sync_packet_threshold: 5.0   # packet sync + následující rámec
+  sync_stream_threshold: 5.0   # stream sync + následující rámec
   sync_eot_threshold: 4.5      # značka konce přenosu
-  sync_lsf_sync_threshold: 3.5 # sync-only LSF, jen pro TRACKING
-  sync_follow_threshold: 4.0   # samotný packet sync uvnitř packet přenosu
-  max_lsf_ber_percent: 9.0
-  rssi_gate_dbfs: -55.0
-
-  # TRACKING - měkčí příjem po validním LSF
-  tracking_sync_lsf_threshold: 7.5
-  tracking_sync_packet_threshold: 6.0
-  tracking_sync_stream_threshold: 6.0
-  tracking_sync_eot_threshold: 5.0
-  tracking_sync_lsf_sync_threshold: 4.5
-  tracking_sync_follow_threshold: 5.5
-  max_tracking_ber_percent: 25.0
-
+  sync_lsf_sync_threshold: 4.5 # samotné LSF sync slovo (bez preamble)
+  sync_follow_threshold: 4.5   # samotný packet sync uvnitř packet přenosu
   min_sync_burst: 5            # kolik synců v 500 ms vyhlásí M17 jako mód
   idle_timeout_ms: 1500        # konec relace po tichu
+  rssi_gate_dbfs: -58.0        # pod touto úrovní M17 nepřevezme mód
   network_packet_queue: 8
   network_packet_ttl_ms: 2000
 ```
@@ -146,11 +134,9 @@ skutečných přenosů, takže se ztrácely celé zprávy, když byla slabá jen
 
 - `min_sync_burst` ovlivňuje jen to, kdo dostane kanál. Dekódování packetů na něm
   nezávisí, takže krátká SMS se neztratí ani při vysoké hodnotě.
-- GATE používá přísné prahy, RSSI gate a BER limit LSF. Sync-only LSF cesta je
-  v GATE vypnutá, protože v šumu vytvářela falešné kandidáty.
-- Po validním LSF se přepne TRACKING s měkčími prahy a vyšším BER. Tím se
-  neztratí slabý stream nebo packet frame, ale falešná hlavička sama mód
-  neotevře.
+- `rssi_gate_dbfs` brání falešnému převzetí módu na šumové úrovni. Dekodér
+  dostává IQ dál, takže packet se nezahazuje; gate pouze nedovolí, aby se M17
+  stalo vlastníkem kanálu.
 - Prahy zvyšuj po malých krocích (např. o 0,5) – čím vyšší, tím víc falešných
   synců v šumu.
 

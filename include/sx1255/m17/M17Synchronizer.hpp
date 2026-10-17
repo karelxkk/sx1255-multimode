@@ -26,10 +26,6 @@ struct SyncThresholds {
     // (see setExpectedType).  A real frame matches its sync word at ~3, so 4.5
     // keeps a margin while staying far below the ~9 of a non-match.
     float follow = 4.5F;
-    // The sync-only LSF path is useful for retries without a repeated
-    // preamble, but it is also the main noise false-positive source.  Gate
-    // mode disables it; tracking mode enables it.
-    bool lsfSyncOnly = true;
 };
 
 // SyncMetrics holds the individual euclidean distances of one sync search
@@ -87,7 +83,6 @@ public:
     // follow it (another frame or the EOT) is missing, weak or truncated.
     void setExpectedType(std::uint16_t typ) { m_expectedType = typ; }
     std::uint16_t expectedType() const { return m_expectedType; }
-    void setThresholds(const SyncThresholds& thresholds) { m_thresholds = thresholds; }
     const SyncThresholds& thresholds() const { return m_thresholds; }
     // Distance of the sync burst emitted last (diagnostics).
     float lastDistance() const { return m_lastDistance; }
