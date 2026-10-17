@@ -374,7 +374,7 @@ public:
         // wrong FM owner can be preempted on the blocks after the LSF.
         const bool detected = m_detected || m_lsfDecoded || m_decoder.syncedType() != 0;
         if (detected) {
-            if (!m_detectionReported) {
+            if (m_countDetections && !m_detectionReported) {
                 m_detectionReported = true;
                 if (m_stats)
                     m_stats->recordDetection(Mode::M17);
@@ -383,6 +383,11 @@ public:
             m_detectionReported = false;
         }
         return {detected, detected ? 1.0F : 0.0F};
+    }
+
+    void setDetectionCounting(bool on) override
+    {
+        m_countDetections = on;
     }
 
     void startSession(const SessionContext&) override
@@ -802,6 +807,7 @@ private:
     std::atomic<bool> m_active{false};
     bool m_detected = false;
     bool m_lsfDecoded = false;
+    bool m_countDetections = true;
     bool m_detectionReported = false;
     bool m_eotSeen = false;
     std::chrono::steady_clock::time_point m_lastActivity{};

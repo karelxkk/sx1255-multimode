@@ -89,14 +89,26 @@ Detection DStarPlugin::detect(const IQBlock& block)
     // monitoring pass without having to decode a second header.
     const bool detected = d.detected || m_detector.inData();
     m_lastConfidence = detected ? 1.0F : 0.0F;
-    if (d.detected && m_stats)
-        m_stats->recordDetection(Mode::DStar);
+    if (detected) {
+        if (m_countDetections && !m_detectionReported) {
+            m_detectionReported = true;
+            if (m_stats)
+                m_stats->recordDetection(Mode::DStar);
+        }
+    } else {
+        m_detectionReported = false;
+    }
     return {detected, detected ? 1.0F : 0.0F};
 }
 
 void DStarPlugin::clearPendingDetection()
 {
     m_detector.reset();
+}
+
+void DStarPlugin::setDetectionCounting(bool on)
+{
+    m_countDetections = on;
 }
 
 void DStarPlugin::startSession(const SessionContext& ctx)

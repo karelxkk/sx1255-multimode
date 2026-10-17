@@ -107,7 +107,7 @@ public:
         }
 
         if (detected) {
-            if (!m_detectionReported) {
+            if (m_countDetections && !m_detectionReported) {
                 m_detectionReported = true;
                 if (m_stats)
                     m_stats->recordDetection(Mode::FM);
@@ -219,6 +219,11 @@ public:
     void clearPendingDetection() override
     {
         m_confirmSamples = 0;
+    }
+
+    void setDetectionCounting(bool on) override
+    {
+        m_countDetections = on;
     }
 
     PluginTelemetry telemetry() const override
@@ -361,6 +366,7 @@ private:
     std::chrono::steady_clock::time_point m_lastRssiLog{};
     std::uint64_t m_confirmSamples = 0;
     std::uint64_t m_confirmSamplesNeeded = 87500;
+    bool m_countDetections = true;
     bool m_detectionReported = false;
     std::chrono::steady_clock::time_point m_hangStart{};
 };

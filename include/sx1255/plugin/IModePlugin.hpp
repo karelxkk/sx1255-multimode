@@ -98,6 +98,12 @@ public:
     // because most modes have nothing to clear.
     virtual void clearPendingDetection() {}
 
+    // Diagnostic detection counters are only meaningful for the mode that is
+    // actually allowed to use the channel.  The dispatcher disables counting
+    // for the non-owning plugins during an exclusive session, so FM seeing a
+    // digital carrier does not inflate fm_detected.
+    virtual void setDetectionCounting(bool) {}
+
     // Live diagnostic counters/confidence values for the web dashboard.
     // The default implementation reports an empty telemetry block.
     virtual PluginTelemetry telemetry() const { return {mode(), {}, {}}; }

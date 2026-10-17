@@ -42,6 +42,7 @@ public:
     bool process(const IQBlock& block) override;
     void stopSession() override;
     void clearPendingDetection() override;
+    void setDetectionCounting(bool on) override;
     PluginTelemetry telemetry() const override;
     unsigned int gatewayBoundPort() const;
 
@@ -73,6 +74,8 @@ private:
     std::thread m_watchdog;
     std::atomic<bool> m_watchdogStop{false};
     float m_lastConfidence = 0.0F;
+    bool m_countDetections = true;
+    bool m_detectionReported = false;
 
     static constexpr long kNetTxTimeoutMs = 1000;
 };

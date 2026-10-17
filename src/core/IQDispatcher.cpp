@@ -43,9 +43,12 @@ void IQDispatcher::dispatch(const IQBlock& block)
             // plugin owns a session.  The RX path must stay alive so the FM
             // plugin can keep feeding the SVXLink bridge (RF -> SVXLink).  Run
             // the monitoring fan-out, but do not grant a new session.
-            for (const auto& plugin : m_registry.plugins())
-                if (plugin)
+            for (const auto& plugin : m_registry.plugins()) {
+                if (plugin) {
+                    plugin->setDetectionCounting(true);
                     plugin->detect(block);
+                }
+            }
             return;
         }
         // The plugins that do not own the session keep monitoring it.  Running
@@ -60,10 +63,12 @@ void IQDispatcher::dispatch(const IQBlock& block)
         for (const auto& plugin : m_registry.plugins()) {
             if (!plugin || plugin == owner)
                 continue;
+            plugin->setDetectionCounting(false);
             const Detection d = plugin->detect(block);
             if (d.detected && plugin->priority() > owner->priority())
                 higherWants = true;
         }
+        owner->setDetectionCounting(true);
         // The hand-over needs a confirmed detection: a single block of a stray
         // correlation from a digital detector must not cut an analogue session.
         m_preemptBlocks = higherWants ? m_preemptBlocks + 1 : 0;
@@ -84,6 +89,7 @@ void IQDispatcher::dispatch(const IQBlock& block)
     for (const auto& plugin : m_registry.plugins()) {
         if (!plugin)
             continue;
+        plugin->setDetectionCounting(true);
         reports.push_back({plugin, plugin->detect(block)});
     }
 
