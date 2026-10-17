@@ -31,7 +31,7 @@ struct FrontendConfig {
     std::string alsaCapture;
     std::string alsaPlayback;
 
-    int    lnaGain   = 24;
+    int    lnaGain   = 42;
     int    pgaGain   = 0;
     int    dacGain   = -3;
     double mixerGain = -12.0;
