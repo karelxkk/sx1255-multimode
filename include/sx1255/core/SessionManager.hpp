@@ -48,7 +48,7 @@ public:
     };
 
     struct Settings {
-        std::chrono::milliseconds sessionTimeout{120000};
+        std::chrono::milliseconds sessionTimeout{300000};
         std::chrono::milliseconds returnGrace{20};
     };
 

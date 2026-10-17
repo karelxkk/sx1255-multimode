@@ -26,7 +26,7 @@ Pokud je relace aktivní, další detekce se ignorují.
 
 ## Časovače
 
-- `sessionTimeout` (výchozí 120 s) — maximální délka relace; po překročení
+- `sessionTimeout` (výchozí 300 s) — maximální délka lokální relace; po překročení
   přechod do `Timeout` a `stopSession()`.
 - `returnGrace` (výchozí 20 ms) — odklad mezi `ReturnToIdle` a `Idle`, aby se
   hardwarový tail dokončil.
