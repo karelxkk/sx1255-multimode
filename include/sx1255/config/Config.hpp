@@ -99,18 +99,33 @@ struct M17Config {
     std::string callsign = "N0CALL";
 
     // --- RX detection and decoding -----------------------------------------
-    // Thresholds are euclidean distances in the symbol domain (ideal symbols
-    // are +-3), so a lower value is stricter.  The defaults match
-    // m17-gateway; they can be loosened for marginal signals.
-    double syncLsfThreshold    = 7.5;   // preamble + LSF sync word
-    double syncPacketThreshold = 5.0;   // packet sync word + the next frame
-    double syncStreamThreshold = 5.0;   // stream sync word + the next frame
+    // GATE thresholds are euclidean distances in the symbol domain (ideal
+    // symbols are +-3), so a lower value is stricter.  They decide whether a
+    // real M17 transmission is present and must not be opened by noise.
+    double syncLsfThreshold    = 6.0;   // preamble + LSF sync word
+    double syncPacketThreshold = 4.5;   // packet sync word + the next frame
+    double syncStreamThreshold = 4.5;   // stream sync word + the next frame
     double syncEotThreshold    = 4.5;   // end-of-transmission marker
     // The LSF sync word alone (without the preamble).  A radio retrying a
     // packet sends its header without the preamble again; the frames were
     // heard, the header was not, and the message could not be routed.
-    double syncLsfSyncThreshold = 4.5;
-    double syncFollowThreshold = 4.5;   // sync word alone, inside a transmission
+    double syncLsfSyncThreshold = 3.5;  // only meaningful in tracking mode
+    double syncFollowThreshold = 4.0;   // sync word alone, inside a transmission
+    // Once a valid LSF opened the gate, keep a weak stream/packet alive with
+    // looser sync thresholds and a higher BER ceiling.
+    double trackingSyncLsfThreshold    = 7.5;
+    double trackingSyncPacketThreshold = 6.0;
+    double trackingSyncStreamThreshold = 6.0;
+    double trackingSyncEotThreshold    = 5.0;
+    double trackingSyncLsfSyncThreshold = 4.5;
+    double trackingSyncFollowThreshold = 5.5;
+    // LSF must be clean to open the gate; once open, tracking frames may have
+    // a much higher BER and are still protected by their own CRC/FEC.
+    double maxLsfBerPercent = 9.0;
+    double maxTrackingBerPercent = 25.0;
+    // Reject an LSF when the channel is at the noise floor.  The decoder still
+    // runs, but this prevents false CRC-passing headers from claiming a mode.
+    double rssiGateDbfs = -55.0;
     // Sync bursts needed inside 500 ms before M17 is *declared* (a valid LSF
     // is always trusted immediately).  Detection only decides who owns the
     // channel; it never gates decoding, so a packet is never lost because it

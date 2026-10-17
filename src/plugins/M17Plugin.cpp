@@ -25,17 +25,30 @@ namespace sx1255 {
 
 namespace {
 
-// syncThresholds turns the M17 configuration into synchronizer thresholds;
-// the defaults are m17-gateway's values.
-m17::SyncThresholds syncThresholds(const M17Config& config)
+// syncThresholds turns the M17 configuration into either the strict gate
+// thresholds or the relaxed tracking thresholds used after a valid LSF.
+m17::SyncThresholds syncThresholds(const M17Config& config, bool tracking)
 {
     m17::SyncThresholds t;
-    t.lsf    = static_cast<float>(config.syncLsfThreshold);
-    t.packet = static_cast<float>(config.syncPacketThreshold);
-    t.stream = static_cast<float>(config.syncStreamThreshold);
-    t.eot    = static_cast<float>(config.syncEotThreshold);
-    t.lsfSync = static_cast<float>(config.syncLsfSyncThreshold);
-    t.follow = static_cast<float>(config.syncFollowThreshold);
+    if (tracking) {
+        t.lsf     = static_cast<float>(config.trackingSyncLsfThreshold);
+        t.packet  = static_cast<float>(config.trackingSyncPacketThreshold);
+        t.stream  = static_cast<float>(config.trackingSyncStreamThreshold);
+        t.eot     = static_cast<float>(config.trackingSyncEotThreshold);
+        t.lsfSync = static_cast<float>(config.trackingSyncLsfSyncThreshold);
+        t.follow  = static_cast<float>(config.trackingSyncFollowThreshold);
+        t.lsfSyncOnly = true;
+    } else {
+        t.lsf     = static_cast<float>(config.syncLsfThreshold);
+        t.packet  = static_cast<float>(config.syncPacketThreshold);
+        t.stream  = static_cast<float>(config.syncStreamThreshold);
+        t.eot     = static_cast<float>(config.syncEotThreshold);
+        t.lsfSync = static_cast<float>(config.syncLsfSyncThreshold);
+        t.follow  = static_cast<float>(config.syncFollowThreshold);
+        // The sync-only LSF path is the main noise source.  It becomes
+        // available again only after the gate has been opened by a real LSF.
+        t.lsfSyncOnly = false;
+    }
     return t;
 }
 
@@ -135,28 +148,48 @@ public:
                                                  ? m17::PacketSync
                                                  : 0);
           },
-          syncThresholds(config))
+          syncThresholds(config, false))
         , m_decoder(m17::Decoder::Callbacks{
-              [this](const m17::LSF& lsf, double) {   // onLSF
+              [this](const m17::LSF& lsf, double ber) {   // onLSF
+                  if (!m_tracking) {
+                      if (!m_rssiGateOpen || ber > m_m17Config.maxLsfBerPercent) {
+                          ++m_gateRejects;
+                          m_lsfRejected = true;
+                          m_gateRejected = true;
+                          return;
+                      }
+                      m_tracking = true;
+                      m_synchronizer.setThresholds(m_trackingThresholds);
+                      ++m_gateOpens;
+                  }
                   m_lsfDecoded = true;
                   m_lastActivity = std::chrono::steady_clock::now();
-                  std::fprintf(stderr, "M17: LSF decoded (%s %s>%s)\n",
+                  std::fprintf(stderr, "M17: LSF decoded (%s %s>%s ber=%.1f%%)\n",
                                lsf.lsfType() == 0 ? "packet" : "stream",
-                               lsf.srcCallsign().c_str(), lsf.dstCallsign().c_str());
+                               lsf.srcCallsign().c_str(), lsf.dstCallsign().c_str(), ber);
               },
               [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload,
-                     std::uint16_t sid, std::uint16_t fn, double) {   // onStream
+                     std::uint16_t sid, std::uint16_t fn, double ber) {   // onStream
+                  if (m_tracking && ber > m_m17Config.maxTrackingBerPercent) {
+                      ++m_framesDropped;
+                      return;
+                  }
                   m_lastActivity = std::chrono::steady_clock::now();
                   forwardStream(lsf, sid, fn, payload, false);
               },
-              [this](const m17::LSF&, double) {        // onStreamLICH
-                  m_lastActivity = std::chrono::steady_clock::now();
+              [this](const m17::LSF&, double ber) {    // onStreamLICH
+                  if (!m_tracking || ber <= m_m17Config.maxTrackingBerPercent)
+                      m_lastActivity = std::chrono::steady_clock::now();
               },
               [this](const m17::LSF& lsf, std::uint16_t sid, std::uint16_t fn, double) {  // onStreamEOT
                   m_lastActivity = std::chrono::steady_clock::now();
                   forwardStream(lsf, sid, fn, {}, true);
               },
               [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload, double ber) {  // onPacket
+                  if (m_tracking && ber > m_m17Config.maxTrackingBerPercent) {
+                      ++m_rfPacketsBadCrc;
+                      return;
+                  }
                   m_lastActivity = std::chrono::steady_clock::now();
                   m_rfPackets++;
                   std::vector<std::uint8_t> packetBytes = lsf.toBytes();
@@ -228,6 +261,10 @@ public:
         , m_m17Config(std::move(config))
         , m_stats(stats)
     {
+        m_gateThresholds = syncThresholds(m_m17Config, false);
+        m_trackingThresholds = syncThresholds(m_m17Config, true);
+        m_synchronizer.setThresholds(m_gateThresholds);
+
         auto streamHandler = [this](const m17::StreamDatagram& dg) {
             {
                 std::lock_guard<std::mutex> lock(m_queueMutex);
@@ -359,19 +396,43 @@ public:
 
     Detection detect(const IQBlock& block) override
     {
+        const double rssi = blockRssiDb(block);
+        m_lastRssiDb = rssi;
+        m_rssiGateOpen = m_tracking || rssi >= m_m17Config.rssiGateDbfs;
         m_detected = false;
         m_lsfDecoded = false;
+        m_gateRejected = false;
         // A quiet channel must not leave a stale packet header behind that a
         // much later frame could be attached to.
         if (std::chrono::steady_clock::now() - m_lastActivity >
-            std::chrono::milliseconds(m_m17Config.idleTimeoutMs))
+            std::chrono::milliseconds(m_m17Config.idleTimeoutMs)) {
             m_decoder.expireRetention();
+            if (!m_active.load()) {
+                m_tracking = false;
+                m_synchronizer.setThresholds(m_gateThresholds);
+            }
+        }
         feed(block);
+        if (m_gateRejected) {
+            // The decoded header passed CRC by accident or came from a noise
+            // floor: discard the decoder state and stay in strict gate mode.
+            m_decoder.reset();
+            m_tracking = false;
+            m_synchronizer.setThresholds(m_gateThresholds);
+            m_detected = false;
+            m_lsfDecoded = false;
+            m_modeDetected = false;
+            m_syncBurst = 0;
+            m_gateRejected = false;
+            m_lsfRejected = false;
+        }
         // A valid LSF alone is not enough to claim the channel: a single false
         // CRC-passing header used to switch the mode.  The decoder is still fed
         // immediately (so no packet is lost), but detection is only latched
         // after min_sync_burst useful syncs and stays latched while the decoder
         // is following a stream or packet.
+        if (!m_tracking && !m_rssiGateOpen)
+            m_detected = false;
         if (m_detected && m_decoder.syncedType() != 0)
             m_modeDetected = true;
         if (m_decoder.syncedType() == 0)
@@ -397,6 +458,8 @@ public:
     void startSession(const SessionContext&) override
     {
         m_active = true;
+        m_tracking = true;
+        m_synchronizer.setThresholds(m_trackingThresholds);
         m_eotSeen = false;
         m_detected = false;
         m_syncBurst = 0;
@@ -425,6 +488,10 @@ public:
     void stopSession() override
     {
         m_active = false;
+        m_tracking = false;
+        m_rssiGateOpen = false;
+        m_modeDetected = false;
+        m_synchronizer.setThresholds(m_gateThresholds);
         m_eotSeen = false;
         m_syncBurst = 0;
         // A packet that is still being reassembled must survive the session
@@ -439,6 +506,10 @@ public:
         PluginTelemetry t;
         t.mode = Mode::M17;
         t.metrics["sync_confidence"] = m_syncConfidence;
+        t.metrics["rssi_db"] = m_lastRssiDb;
+        t.metrics["tracking"] = m_tracking ? 1.0 : 0.0;
+        t.metrics["gate_opens"] = static_cast<double>(m_gateOpens);
+        t.metrics["gate_rejects"] = static_cast<double>(m_gateRejects);
         t.metrics["lsf_count"] = static_cast<double>(m_lsfCount);
         t.metrics["frame_count"] = static_cast<double>(m_frameCount);
         t.metrics["sync_count"] = static_cast<double>(m_syncCount);
@@ -755,6 +826,20 @@ private:
             std::fprintf(stderr, "M17 %s: %s\n", kind, message.c_str());
     }
 
+    static double blockRssiDb(const IQBlock& block)
+    {
+        if (block.count == 0)
+            return -120.0;
+        double power = 0.0;
+        for (std::size_t n = 0; n < block.count; ++n) {
+            const double i = static_cast<double>(block.samples[n].i);
+            const double q = static_cast<double>(block.samples[n].q);
+            power += i * i + q * q;
+        }
+        power /= static_cast<double>(block.count);
+        return 10.0 * std::log10(power + 1e-12);
+    }
+
     void feed(const IQBlock& block)
     {
         // The RF frontend supplies float IQ; m17-gateway DSP works in
@@ -781,6 +866,8 @@ private:
     m17::BatchResampler     m_txResampler{125, 24};
     m17::BatchFMModulator   m_txFMMod{125000.0};
     M17Config               m_m17Config;
+    m17::SyncThresholds     m_gateThresholds;
+    m17::SyncThresholds     m_trackingThresholds;
     std::unique_ptr<m17::M17ReflectorClient> m_reflector;
     std::unique_ptr<m17::M17ReflectorClient> m_bridge;
     std::atomic<m17::ReflectorState> m_reflectorState{m17::ReflectorState::Disconnected};
@@ -812,6 +899,9 @@ private:
     bool m_detected = false;
     bool m_lsfDecoded = false;
     bool m_modeDetected = false;
+    bool m_tracking = false;
+    bool m_rssiGateOpen = false;
+    bool m_gateRejected = false;
     bool m_countDetections = true;
     bool m_detectionReported = false;
     bool m_eotSeen = false;
@@ -835,6 +925,9 @@ private:
     bool m_lsfWasSyncOnly = false;
     std::uint64_t m_lsfSyncRejects = 0;
     double m_syncConfidence = 0.0;
+    double m_lastRssiDb = -120.0;
+    std::uint64_t m_gateOpens = 0;
+    std::uint64_t m_gateRejects = 0;
     int m_syncBurst = 0;
     std::chrono::steady_clock::time_point m_syncBurstStart{};
 

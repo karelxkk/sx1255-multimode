@@ -190,6 +190,15 @@ std::vector<ComplexFloat> unmodulatedCarrier(std::size_t count)
     return out;
 }
 
+std::vector<ComplexFloat> scaled(std::vector<ComplexFloat> iq, float gain)
+{
+    for (ComplexFloat& s : iq) {
+        s.i *= gain;
+        s.q *= gain;
+    }
+    return iq;
+}
+
 // ---------------------------------------------------------------------------
 // Full pipeline: file -> IQReplay -> RadioFrontend -> IQDispatcher -> plugins.
 // ---------------------------------------------------------------------------
@@ -274,6 +283,33 @@ int main()
         std::printf("mixed replay state: %s\n",
                     SessionManager::toString(mixedState));
         return 4;
+    }
+
+    // RSSI gate: the same valid M17 signal must be rejected at the noise floor
+    // and accepted when it is strong enough to open the gate.
+    {
+        Config m17Config;
+        m17Config.m17.bridge.enabled = false;
+        m17Config.m17.reflector.enabled = false;
+        const auto strong = m17Iq(2000);
+        const auto weak = scaled(strong, 0.001F);   // approx -60 dBFS
+
+        auto feedAll = [&](const std::vector<ComplexFloat>& iq) {
+            auto plugin = createM17Plugin(m17Config.m17);
+            bool detected = false;
+            for (std::size_t off = 0; off < iq.size(); off += 2048) {
+                const IQBlock block{off, iq.data() + off,
+                                    std::min<std::size_t>(2048, iq.size() - off),
+                                    kSampleRate};
+                detected = detected || plugin->detect(block).detected;
+            }
+            return detected;
+        };
+
+        if (!feedAll(strong))
+            return 5;
+        if (feedAll(weak))
+            return 6;
     }
 
     std::remove(fmFile.c_str());

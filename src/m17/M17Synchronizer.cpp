@@ -215,7 +215,7 @@ void M17Synchronizer::push(float sample)
     // A header whose preamble was not repeated: the LSF sync word alone decides.
     // Radios that retry a packet send the header without the preamble again,
     // and without this the frames were heard while the message had no header.
-    if (typ == 0 && metrics.lsfOnly < m_thresholds.lsfSync) {
+    if (typ == 0 && m_thresholds.lsfSyncOnly && metrics.lsfOnly < m_thresholds.lsfSync) {
         typ = LSFSync;
         dist = metrics.lsfOnly;
         m_lastKind = Kind::SyncOnly;

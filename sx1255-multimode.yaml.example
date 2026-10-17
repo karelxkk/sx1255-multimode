@@ -117,16 +117,26 @@ modes:
     # --- Příjem packetů (SMS, poloha) -----------------------------------
     # Prahy synchronizace jsou euklidovské vzdálenosti v symbolové doméně
     # (ideální symboly jsou +-3), takže nižší hodnota = přísnější.  Naměřeno
-    # na reálném signálu z OpenRTX: skutečné LSF mají 1,4-4,4, rámce 2,7-3,8
-    # a cokoliv, co sync slovo není, zůstává nad ~11,5 - výchozí hodnoty leží
-    # v této mezeře.
-    sync_lsf_threshold: 7.5      # preamble + LSF sync
-    sync_packet_threshold: 5.0   # packet sync + následující rámec
-    sync_stream_threshold: 5.0   # stream sync + následující rámec
+    # GATE: přísné prahy rozhodují, zda je na kanálu skutečné M17.  Nižší
+    # hodnota = přísnější.  Sync-only LSF cesta je v GATE vypnutá, protože
+    # v šumu vyrábí falešné kandidáty.
+    sync_lsf_threshold: 6.0      # preamble + LSF sync
+    sync_packet_threshold: 4.5   # packet sync + následující rámec
+    sync_stream_threshold: 4.5   # stream sync + následující rámec
     sync_eot_threshold: 4.5      # značka konce přenosu
-    sync_lsf_sync_threshold: 4.5 # samotné LSF sync slovo (opakovaný pokus rádia
-                                 # neposílá preamble znovu)
-    sync_follow_threshold: 4.5   # samotný packet sync uvnitř packet přenosu
+    sync_lsf_sync_threshold: 3.5 # sync-only LSF, použije se až v TRACKING
+    sync_follow_threshold: 4.0   # samotný packet sync uvnitř packet přenosu
+    # Po otevření GATE validním LSF se přepne měkčí TRACKING, aby slabý stream
+    # nepadal.  Zde je povolený i vyšší BER; rámce dál chrání FEC/CRC.
+    tracking_sync_lsf_threshold: 7.5
+    tracking_sync_packet_threshold: 6.0
+    tracking_sync_stream_threshold: 6.0
+    tracking_sync_eot_threshold: 5.0
+    tracking_sync_lsf_sync_threshold: 4.5
+    tracking_sync_follow_threshold: 5.5
+    max_lsf_ber_percent: 9.0     # GATE: čistý LSF, jinak se kandidát odmítne
+    max_tracking_ber_percent: 25.0 # TRACKING: stream/packet může mít horší BER
+    rssi_gate_dbfs: -55.0        # GATE se neotevře na šumové úrovni
     # Počet sync burstů v 500 ms, po kterém se M17 vyhlásí jako aktivní mód.
     # Slouží jen k rozhodnutí, kdo vlastní kanál - dekódování packetů na tom
     # nezávisí, takže krátká SMS se neztratí.
