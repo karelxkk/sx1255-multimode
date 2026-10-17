@@ -40,6 +40,7 @@ public:
         , m_deemph(fm::kDeemphTau, kSampleRate)
         , m_preemph(fm::kPreemphTau, kSampleRate)
         , m_ctcssGen(m_config.ctcssTx, fm::kCtcssDevHz, kSampleRate)
+        , m_confirmSamplesNeeded(static_cast<std::uint64_t>(m_config.squelchHoldMs) * 125U)
     {
         if (m_useSvxlink) {
             m_sqlPty = std::make_unique<fm::SqlPty>(
@@ -94,7 +95,7 @@ public:
         } else {
             m_confirmSamples = 0;
         }
-        const bool detected = m_confirmSamples >= kConfirmSamples;
+        const bool detected = m_confirmSamples >= m_confirmSamplesNeeded;
         const float confidence = static_cast<float>(
             std::clamp(0.5 + (rssi - m_config.rssiSquelchDb) / 20.0, 0.0, 1.0));
 
@@ -312,11 +313,6 @@ private:
     }
 
     static constexpr double kSampleRate = 125000.0;
-    // FM is the fallback mode: hold the carrier this long (in samples, so the
-    // result does not depend on the dispatch block size) before claiming it.
-    // Digital modes win the arbitration when they confirm, and the dispatcher
-    // preempts a wrong FM owner once a higher-priority mode reports.
-    static constexpr std::uint64_t kConfirmSamples = 37500;   // 300 ms @125 kHz
     // A single noise window (16 ms at the dispatch block size) is far too
     // short to decide the carrier is gone: one noisy block used to slam the
     // squelch shut,
@@ -350,6 +346,7 @@ private:
     double m_lastRssiDb = -120.0;
     std::chrono::steady_clock::time_point m_lastRssiLog{};
     std::uint64_t m_confirmSamples = 0;
+    std::uint64_t m_confirmSamplesNeeded = 87500;
     std::chrono::steady_clock::time_point m_hangStart{};
 };
 

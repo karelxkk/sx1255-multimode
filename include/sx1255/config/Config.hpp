@@ -68,6 +68,11 @@ struct FmConfig {
     // of every block and opens once it stays above this threshold long
     // enough.  This is the same dBFS scale as the web dashboard RSSI.
     double rssiSquelchDb = -55.0;
+    // RSSI has to stay above the threshold this long before FM may claim the
+    // channel.  Digital modes have higher priority but take a few hundred ms
+    // to validate a header, so FM must wait longer than that and not briefly
+    // key SVXLink on an M17/D-Star transmission.
+    int    squelchHoldMs = 700;
     int    hangTimeMs = 3000;   // local-repeat TX tail after carrier loss
     std::string backend = "local";  // "local" | "svxlink"
     FmSvxlinkConfig svxlink;

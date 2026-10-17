@@ -44,6 +44,9 @@ modes:
   fm:
     enabled: true             # zapnout FM plugin
     # Detekce nosné je RSSI, bez CTCSS. Práh se bere z frontend.squelch.
+    # FM smí převzít kanál až po této době nad prahem, aby M17/D-Star stihly
+    # detekovat a FM krátce neklíčoval SVXLink na digitální nosné.
+    squelch_hold_ms: 700      # doba RSSI nad prahem, než FM otevře
     # 0 = multimode tón na TX negeneruje.  Při backendu svxlink ho generuje
     # SVXLink sám (TX_CTCSS=ALWAYS a CTCSS_LEVEL v sekci [Tx1]); při backendu
     # local si tón musí vyrobit multimode, proto tam patří 88.5.

@@ -41,7 +41,7 @@ int main()
     // Any carrier above the RSSI threshold opens FM, even without modulation.
     {
         auto fm = createFmPlugin(fmConfig);
-        auto iq = fmModulated(88.5, 500.0, 65536);
+        auto iq = fmModulated(88.5, 500.0, 131072);
         bool detected = false;
         for (std::size_t off = 0; off < iq.size(); off += 2048) {
             const IQBlock block{0, iq.data() + off,
@@ -70,7 +70,7 @@ int main()
     // An off-frequency carrier is still a carrier: RSSI must open the squelch.
     {
         auto fm = createFmPlugin(fmConfig);
-        std::vector<ComplexFloat> iq(65536);
+        std::vector<ComplexFloat> iq(131072);
         double phase = 0.0;
         for (std::size_t n = 0; n < iq.size(); ++n) {
             phase += 2.0 * kPi * 700.0 / kSampleRate;

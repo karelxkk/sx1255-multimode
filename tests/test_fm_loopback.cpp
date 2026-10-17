@@ -41,7 +41,7 @@ int main()
     config.ctcssTx = 88.5;
     config.hangTimeMs = 100;
 
-    const auto rxIq = voicePlusCtcss(65536);
+    const auto rxIq = voicePlusCtcss(131072);
 
     auto plugin = createFmPlugin(config);
 

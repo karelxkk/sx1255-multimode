@@ -260,6 +260,8 @@ Config loadConfig(const std::string& path)
         config.fm.ctcssTx = asDouble(*fm, "ctcss_tx");
     if (fm->map.count("rssi_squelch_db"))
         config.fm.rssiSquelchDb = asDouble(*fm, "rssi_squelch_db");
+    if (fm->map.count("squelch_hold_ms"))
+        config.fm.squelchHoldMs = static_cast<int>(asInt(*fm, "squelch_hold_ms"));
     if (fm->map.count("ctcss")) {
         // Backwards-compatible alias: one tone for both RX and TX.
         const double ctcss = asDouble(*fm, "ctcss");
@@ -425,6 +427,7 @@ std::string serializeConfig(const Config& config)
     out << "    enabled: " << (config.fm.enabled ? "true" : "false") << '\n';
     out << "    ctcss_tx: " << formatDouble(config.fm.ctcssTx) << '\n';
     out << "    rssi_squelch_db: " << formatDouble(config.fm.rssiSquelchDb) << '\n';
+    out << "    squelch_hold_ms: " << config.fm.squelchHoldMs << '\n';
     out << "    hang_time_ms: " << config.fm.hangTimeMs << '\n';
     out << "    backend: " << config.fm.backend << '\n';
     out << "    svxlink:\n";
