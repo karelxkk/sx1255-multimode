@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <memory>
+#include <thread>
 #include <vector>
 
 using namespace sx1255;
@@ -88,6 +89,25 @@ int main()
     if (!sessions.acquireTxPacket(Mode::M17))
         return 18;   // but packets are data and must go through
     sessions.releaseTx();
+
+    // A network transmission is not a local detector session: the global
+    // local-session timeout must not cut a long ACTIVE_SVXLINK.
+    {
+        SessionManager net(SessionManager::Settings{10ms, 0ms});
+        net.start();
+        net.setPreferredNetworkMode(Mode::FM);
+        if (!net.acquireTx(Mode::FM))
+            return 19;
+        if (net.state() != SessionManager::State::ActiveSvxlink)
+            return 20;
+        std::this_thread::sleep_for(30ms);
+        net.timeoutCheck();
+        if (net.state() != SessionManager::State::ActiveSvxlink)
+            return 21;
+        net.releaseTx();
+        if (net.state() != SessionManager::State::Idle)
+            return 22;
+    }
 
     return 0;
 }

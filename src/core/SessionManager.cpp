@@ -287,7 +287,13 @@ void SessionManager::timeoutCheck()
                 break;
 
             default:
-                if (isActiveState(m_state) && now - m_activeSince >= m_settings.sessionTimeout) {
+                // The inactivity timeout is for local RF sessions (FM/D-Star/
+                // M17), where a stuck detector must eventually let go.  A
+                // network transmission can legitimately last much longer
+                // (ACTIVE_SVXLINK can run for an hour); its plugin releases
+                // the channel on PTT/last-frame/end-of-data instead.
+                if (m_owner && isActiveState(m_state) &&
+                    now - m_activeSince >= m_settings.sessionTimeout) {
                     m_state = State::Timeout;
                     toStop = std::move(m_owner);
                     m_owner.reset();
