@@ -1,5 +1,7 @@
 #include "sx1255/fm/FmSvxlinkBridge.hpp"
 
+#include "sx1255/m17/M17DSP.hpp"
+
 #include <alsa/asoundlib.h>
 
 #include <algorithm>
@@ -378,20 +380,19 @@ void FmSvxlinkBridge::rxThread()
     auto* playback = reinterpret_cast<snd_pcm_t*>(m_playback);
     const double ifRate = kRfRate / static_cast<double>(kRxIfDecim);   // 25 kHz
     const double demodScale = ifRate / (2.0 * kPi * m_config.rxMaxDevHz);
-    const double rxResampStep = ifRate / static_cast<double>(m_config.audioRate);
 
     ComplexDcBlocker dc(0.999F);   // original RX_IF DC blocker
     FirDecimator ifLpf(static_cast<float>(kRfRate), kRxIfFc);
     FmDiscriminator discriminator;
+    // Polyphase 25 kSa/s -> 16 kSa/s (16/25).  Replaces the original linear
+    // interpolation: the windowed-sinc phases keep the audio band flat and
+    // attenuate the images that linear interpolation folds back in.
+    m17::RationalResampler rxResampler(16, 25);
     DeEmphasis deemph(m_config.deemphTau, static_cast<double>(m_config.audioRate));
     FirFilter audioLpf(static_cast<float>(m_config.audioRate),
                        static_cast<float>(m_config.rxAudioLpHz));
     HighPass audioHpf(static_cast<double>(m_config.audioRate), m_config.rxHighPassHz);
     int decPhase = 0;
-    double rxInT = 0.0;
-    double rxNextOutT = 0.0;
-    float rxPrevIf = 0.0F;
-    bool rxHavePrev = false;
 
     std::vector<float> audio;
     std::vector<std::int16_t> pcm;
@@ -424,32 +425,14 @@ void FmSvxlinkBridge::rxThread()
         const ComplexFloat xIf = ifLpf.compute();
         const float aIf = discriminator.process(xIf) * static_cast<float>(demodScale);
 
-        if (!rxHavePrev) {
-            rxPrevIf = aIf;
-            rxHavePrev = true;
-            continue;
-        }
-
-        rxInT += 1.0;
-        while (rxNextOutT <= rxInT) {
-            const double frac = rxNextOutT - (rxInT - 1.0);
-            if (frac < 0.0) {
-                rxNextOutT += rxResampStep;
-                continue;
-            }
-            if (frac > 1.0)
-                break;
-
-            float a = rxPrevIf + static_cast<float>(frac) * (aIf - rxPrevIf);
+        for (const double r : rxResampler.process(static_cast<double>(aIf))) {
+            float a = static_cast<float>(r);
             a = deemph.process(a);
             a = audioLpf.process(a);
             a = audioHpf.process(a);
             a = std::clamp(a, -1.0F, 1.0F);
             audio.push_back(a);
-
-            rxNextOutT += rxResampStep;
         }
-        rxPrevIf = aIf;
 
         // Write whole 512-frame chunks; never drop audio on -EAGAIN.
         while (audio.size() >= kAudioPeriod && m_running.load()) {
