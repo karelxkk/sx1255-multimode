@@ -169,7 +169,7 @@ public:
 
             // Keep the RF<->audio bridge alive for SVXLink's hang tail, but
             // release the session once SVXLink has dropped PTT too.
-            if (m_bridge && m_bridge->transmitting())
+            if (m_bridge && (m_bridge->transmitting() || m_bridge->pttKeyed()))
                 return true;
             return false;
         }

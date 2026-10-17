@@ -71,6 +71,11 @@ public:
     // True while SVXLink has the repeater keyed (PTY 'T' seen, 'R' not yet).
     bool transmitting() const { return m_transmitting.load(); }
 
+    // True while the physical SX1255 TX is still keyed/draining.  SVXLink
+    // drops the logical PTT before the TX worker turns the chip around, so the
+    // FM session must survive this short gap to accept an immediate re-key.
+    bool pttKeyed() const { return m_pttKeyed.load(); }
+
     // Global TX arbiter (SessionManager).  May be set after start().
     void setArbiter(ITxArbiter* arbiter) { m_arbiter = arbiter; }
 
