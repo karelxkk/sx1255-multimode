@@ -370,7 +370,9 @@ public:
         // A valid LSF (Golay + CRC) is trusted immediately; otherwise require
         // two syncs inside a short window.  A single noise correlation used to
         // grab the channel and starve FM for the whole inactivity timeout.
-        const bool detected = m_detected || m_lsfDecoded;
+        // Once the decoder is synchronised it keeps reporting detection, so a
+        // wrong FM owner can be preempted on the blocks after the LSF.
+        const bool detected = m_detected || m_lsfDecoded || m_decoder.syncedType() != 0;
         if (detected && m_stats)
             m_stats->recordDetection(Mode::M17);
         return {detected, detected ? 1.0F : 0.0F};

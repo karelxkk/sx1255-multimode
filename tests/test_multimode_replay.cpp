@@ -161,19 +161,25 @@ std::vector<ComplexFloat> dstarIq()
 // ---------------------------------------------------------------------------
 // M17: preamble + LSF + filler at 125 kSa/s.
 // ---------------------------------------------------------------------------
-std::vector<ComplexFloat> m17Iq()
+std::vector<ComplexFloat> m17Iq(int fillerSymbols = 600)
 {
     const m17::LSF txLsf = m17::makeLSF("N1ADJ", "OK1LBC", 1, 2, 0);
     std::vector<m17::Symbol> symbols = m17::appendPreamble({}, false);
     const std::vector<m17::Symbol> lsfSyms = m17::generateLSFSymbols(txLsf);
     symbols.insert(symbols.end(), lsfSyms.begin(), lsfSyms.end());
-    for (int i = 0; i < 600; ++i)
+    for (int i = 0; i < fillerSymbols; ++i)
         symbols.push_back(i % 2 ? +3.0F : -3.0F);
 
     const std::vector<m17::CD> iq = m17::modulateSymbols(symbols);
     std::vector<ComplexFloat> out(iq.size());
     for (std::size_t i = 0; i < iq.size(); ++i)
         out[i] = {static_cast<float>(iq[i].re), static_cast<float>(iq[i].im)};
+    return out;
+}
+
+std::vector<ComplexFloat> unmodulatedCarrier(std::size_t count)
+{
+    std::vector<ComplexFloat> out(count, ComplexFloat{1.0F, 0.0F});
     return out;
 }
 
@@ -222,6 +228,7 @@ int main()
     const std::string fmFile    = tempFile("fm");
     const std::string dstarFile = tempFile("dstar");
     const std::string m17File   = tempFile("m17");
+    const std::string mixedFile = tempFile("mixed");
 
     // FM needs 300 ms of carrier before it claims the channel (digital modes
     // must win when they are on the air); generate one continuous fixture so
@@ -230,6 +237,13 @@ int main()
     writeFile(fmFile, toLowIf(fmLong, 25000.0), 430950000);
     writeFile(dstarFile, toLowIf(dstarIq(), 25000.0), 430950000);
     writeFile(m17File, toLowIf(m17Iq(), 25000.0), 430950000);
+
+    // A 400 ms unmodulated carrier lets RSSI-based FM claim the channel first;
+    // the following M17 LSF must then preempt FM and finish as ActiveM17.
+    std::vector<ComplexFloat> mixed = unmodulatedCarrier(50000);
+    const std::vector<ComplexFloat> m17AfterFm = m17Iq(2000);
+    mixed.insert(mixed.end(), m17AfterFm.begin(), m17AfterFm.end());
+    writeFile(mixedFile, toLowIf(mixed, 25000.0), 430950000);
 
     const auto fmState = runReplay(fmFile);
     if (fmState != SessionManager::State::ActiveFm) {
@@ -248,8 +262,16 @@ int main()
     if (m17State != SessionManager::State::ActiveM17)
         return 3;
 
+    const auto mixedState = runReplay(mixedFile);
+    if (mixedState != SessionManager::State::ActiveM17) {
+        std::printf("mixed replay state: %s\n",
+                    SessionManager::toString(mixedState));
+        return 4;
+    }
+
     std::remove(fmFile.c_str());
     std::remove(dstarFile.c_str());
     std::remove(m17File.c_str());
+    std::remove(mixedFile.c_str());
     return 0;
 }
