@@ -167,8 +167,15 @@ std::vector<ComplexFloat> m17Iq(int fillerSymbols = 600)
     std::vector<m17::Symbol> symbols = m17::appendPreamble({}, false);
     const std::vector<m17::Symbol> lsfSyms = m17::generateLSFSymbols(txLsf);
     symbols.insert(symbols.end(), lsfSyms.begin(), lsfSyms.end());
-    for (int i = 0; i < fillerSymbols; ++i)
-        symbols.push_back(i % 2 ? +3.0F : -3.0F);
+    // Valid stream frames so the plugin can latch M17 mode after several
+    // useful syncs (matching the stricter min_sync_burst claim logic).
+    const int frames = std::max(5, fillerSymbols / 200);
+    for (int fn = 0; fn < frames; ++fn) {
+        const std::vector<std::uint8_t> payload(16, static_cast<std::uint8_t>(fn));
+        const std::vector<m17::Symbol> frame =
+            m17::generateStreamSymbols(txLsf, static_cast<std::uint16_t>(fn), payload);
+        symbols.insert(symbols.end(), frame.begin(), frame.end());
+    }
 
     const std::vector<m17::CD> iq = m17::modulateSymbols(symbols);
     std::vector<ComplexFloat> out(iq.size());
@@ -236,7 +243,7 @@ int main()
     std::vector<ComplexFloat> fmLong = fmIq(131072);
     writeFile(fmFile, toLowIf(fmLong, 25000.0), 430950000);
     writeFile(dstarFile, toLowIf(dstarIq(), 25000.0), 430950000);
-    writeFile(m17File, toLowIf(m17Iq(), 25000.0), 430950000);
+    writeFile(m17File, toLowIf(m17Iq(2000), 25000.0), 430950000);
 
     // A 400 ms unmodulated carrier lets RSSI-based FM claim the channel first;
     // the following M17 LSF must then preempt FM and finish as ActiveM17.

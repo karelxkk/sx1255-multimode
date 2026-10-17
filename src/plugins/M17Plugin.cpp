@@ -367,12 +367,16 @@ public:
             std::chrono::milliseconds(m_m17Config.idleTimeoutMs))
             m_decoder.expireRetention();
         feed(block);
-        // A valid LSF (Golay + CRC) is trusted immediately; otherwise require
-        // two syncs inside a short window.  A single noise correlation used to
-        // grab the channel and starve FM for the whole inactivity timeout.
-        // Once the decoder is synchronised it keeps reporting detection, so a
-        // wrong FM owner can be preempted on the blocks after the LSF.
-        const bool detected = m_detected || m_lsfDecoded || m_decoder.syncedType() != 0;
+        // A valid LSF alone is not enough to claim the channel: a single false
+        // CRC-passing header used to switch the mode.  The decoder is still fed
+        // immediately (so no packet is lost), but detection is only latched
+        // after min_sync_burst useful syncs and stays latched while the decoder
+        // is following a stream or packet.
+        if (m_detected && m_decoder.syncedType() != 0)
+            m_modeDetected = true;
+        if (m_decoder.syncedType() == 0)
+            m_modeDetected = false;
+        const bool detected = m_modeDetected;
         if (detected) {
             if (m_countDetections && !m_detectionReported) {
                 m_detectionReported = true;
@@ -807,6 +811,7 @@ private:
     std::atomic<bool> m_active{false};
     bool m_detected = false;
     bool m_lsfDecoded = false;
+    bool m_modeDetected = false;
     bool m_countDetections = true;
     bool m_detectionReported = false;
     bool m_eotSeen = false;
