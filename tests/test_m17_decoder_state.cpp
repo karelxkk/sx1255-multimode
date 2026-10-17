@@ -222,6 +222,28 @@ int main()
         }
     }
 
+    {   // A packet LSF that never completes must time out and release the
+        // decoder.  Otherwise a false header keeps M17 "active" forever.
+        Log log;
+        Decoder decoder = makeDecoder(log);
+        const Sections s = sections(shortText);
+        decoder.decodeFrame(LSFSync, s.lsf);
+        if (decoder.syncedType() != PacketSync) {
+            std::printf("stale packet header: FAIL not in packet sync\n");
+            ++failures;
+        }
+        decoder.expireRetention();
+        if (decoder.syncedType() != 0) {
+            std::printf("stale packet header: FAIL sync did not clear\n");
+            ++failures;
+        }
+        decoder.decodeFrame(PacketSync, s.frames[0]);
+        if (log.packets != 0 || log.dropped != 1) {
+            std::printf("stale packet header: FAIL frame was routed\n");
+            ++failures;
+        }
+    }
+
     if (failures == 0)
         std::printf("decoder state: ok\n");
     return failures == 0 ? 0 : 1;

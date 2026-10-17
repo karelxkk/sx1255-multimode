@@ -1040,6 +1040,14 @@ void Decoder::expireRetention()
     m_lastPacketLsf.reset();
     m_lastPacketLsfAge = kLsfRetentionFrames + 1;
     clearPacketAssembly();
+    // A packet LSF that never produced a valid packet must not leave the
+    // decoder "synchronised" forever.  Otherwise a false header keeps the
+    // M17 plugin detected long after the RF channel went quiet.
+    if (m_syncedType == PacketSync) {
+        m_syncedType = 0;
+        m_gotLSF = false;
+        m_lsf.reset();
+    }
 }
 
 void Decoder::clearPacketAssembly()

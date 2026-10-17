@@ -121,7 +121,6 @@ public:
                   const bool everyBurst = typ == m17::LSFSync || typ == m17::PacketSync;
                   logDiag(m_diagSync, "sync", line, !everyBurst);
               }
-              m_decoder.decodeFrame(typ, softBits);
               // A header that carried nothing valid must not swallow the
               // frames behind it: hand the signal back to the synchronizer.
               if (m_lsfRejected) {
@@ -217,9 +216,10 @@ public:
                                lsf.srcCallsign().c_str(), lsf.dstCallsign().c_str());
               },
               [this](std::uint8_t field, bool lastFrame, int errors) {   // onPacketFrame
-                  // A frame the decoder actually used keeps the session alive;
-                  // an unrelated sync burst does not (see the burst callback).
-                  m_lastActivity = std::chrono::steady_clock::now();
+                  // A packet frame alone must not keep the session alive: a
+                  // false packet LSF can otherwise be followed by endless
+                  // noise frames and never time out.  Valid LSF/stream/packet
+                  // events update m_lastActivity.
                   if (!m_m17Config.logSync)
                       return;
                   std::fprintf(stderr, "M17 packet frame: %s=%u errors=%d\n",
