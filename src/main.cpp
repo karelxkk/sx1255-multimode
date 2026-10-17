@@ -107,6 +107,7 @@ int main(int argc, char** argv)
         }
 
         sx1255::Config config = sx1255::loadConfig(configPath);
+        config.fm.rssiSquelchDb = config.frontend.squelch;
         if (!captureFile.empty()) {
             config.recording.enabled = true;
             config.recording.file = captureFile;

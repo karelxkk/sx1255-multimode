@@ -20,8 +20,8 @@ namespace {
 // ---------------------------------------------------------------------------
 // FmPlugin
 //
-// NFM repeater.  While monitoring, it FM-discriminates the shared IQ stream
-// and decides from the demodulated noise whether a carrier is present.
+// NFM repeater.  While monitoring it measures the shared IQ power (RSSI) and
+// opens the FM squelch once that level stays above the configured threshold.
 // Once a session is
 // granted it becomes a full-duplex bridge:
 //
@@ -81,26 +81,29 @@ public:
         if (m_useSvxlink && m_bridge)
             m_bridge->pushRxIq(block.samples, block.count);
 
-        const double noise = ingest(block, false);
-        if (noise < 0.0) {
-            m_confirmSamples = 0;
-            return {false, 0.0F};
-        }
+        const double rssi = blockRssiDb(block);
+        m_lastRssiDb = rssi;
 
-        // Noise squelch: low ratio means a carrier is quieting the demodulator.
         // The carrier must hold for a while before FM claims the channel: the
-        // digital modes detect the same carrier (any signal quiets the
-        // demodulator) and they have higher priority, so a too eager FM would
-        // steal e.g. a D-Star or M17 transmission before their detector
-        // confirms.  A time based hold keeps this independent of block size.
-        if (noise < m_config.squelchNoiseRatio) {
+        // digital modes see the same carrier and they have higher priority, so
+        // a too eager FM would steal e.g. a D-Star or M17 transmission before
+        // their detector confirms.  A time based hold keeps this independent
+        // of the dispatch block size.
+        if (rssi >= m_config.rssiSquelchDb) {
             m_confirmSamples += static_cast<std::uint64_t>(block.count);
         } else {
             m_confirmSamples = 0;
         }
         const bool detected = m_confirmSamples >= kConfirmSamples;
         const float confidence = static_cast<float>(
-            std::clamp(1.0 - noise / (2.0 * m_config.squelchNoiseRatio), 0.0, 1.0));
+            std::clamp(0.5 + (rssi - m_config.rssiSquelchDb) / 20.0, 0.0, 1.0));
+
+        const auto now = std::chrono::steady_clock::now();
+        if (rssi >= m_config.rssiSquelchDb &&
+            now - m_lastRssiLog > std::chrono::seconds(2)) {
+            m_lastRssiLog = now;
+            std::fprintf(stderr, "FM squelch: carrier, RSSI %.1f dB\n", rssi);
+        }
 
         if (detected && m_stats)
             m_stats->recordDetection(Mode::FM);
@@ -113,7 +116,6 @@ public:
         m_tx = ctx.tx;
         m_active = true;
         m_hangActive = false;
-        m_audio.clear();
         m_deemph.reset();
         m_dcBlock.reset();
         m_preemph.reset();
@@ -138,20 +140,12 @@ public:
 
     bool process(const IQBlock& block) override
     {
-        const double noise = ingest(block, !m_useSvxlink);
-
+        const double rssi = blockRssiDb(block);
+        m_lastRssiDb = rssi;
         const auto now = std::chrono::steady_clock::now();
-        const bool carrier = noise >= 0.0 && noise < m_config.squelchNoiseRatio;
+        const bool carrier = rssi >= m_config.rssiSquelchDb;
 
         if (m_useSvxlink) {
-            // A negative value means the window is still filling right after
-            // startSession; keep the session for that brief settle.
-            if (noise < 0.0) {
-                if (m_bridge)
-                    m_bridge->pushRxIq(block.samples, block.count);
-                return true;
-            }
-
             if (carrier && m_bridge)
                 m_bridge->pushRxIq(block.samples, block.count);
 
@@ -172,6 +166,7 @@ public:
             return false;
         }
 
+        processLocalTx(block);
         if (carrier) {
             m_hangActive = false;
         } else if (!m_hangActive) {
@@ -190,7 +185,6 @@ public:
     {
         m_active = false;
         m_hangActive = false;
-        m_audio.clear();
         m_disc.reset();
         m_deemph.reset();
         m_dcBlock.reset();
@@ -217,7 +211,8 @@ public:
         PluginTelemetry t;
         t.mode = Mode::FM;
         t.metrics["ctcss_tx_hz"] = m_config.ctcssTx;
-        t.metrics["squelch_noise"] = m_lastSquelchNoise;
+        t.metrics["rssi_db"] = m_lastRssiDb;
+        t.metrics["rssi_squelch_db"] = m_config.rssiSquelchDb;
         t.metrics["squelch_open"] = m_sqlOpen ? 1.0 : 0.0;
         t.metrics["confidence"] = m_lastConfidence;
         return t;
@@ -252,9 +247,8 @@ private:
     }
 
     // Drive the SVXLink squelch (SQL PTY) from the local RF carrier.  Called
-    // from detect() (monitoring and arbiter-only states such as the hang tail)
-    // and from process() (active session) so a local station can always be
-    // received, even while SVXLink holds the transmitter.
+    // only from process(), i.e. once FM already owns the channel, so a
+    // digital carrier cannot make SVXLink key up before arbitration.
     void driveSql(bool carrier, std::chrono::steady_clock::time_point now)
     {
         if (!m_sqlPty)
@@ -283,88 +277,41 @@ private:
         }
     }
 
-    // Feed one IQ block through the discriminator.  When tx is true, bridge
-    // the audio into the TX chain and emit IQ via ITransmit.  Returns the
-    // Noise-squelch ratio over the most recent window, or -1 if not enough
-    // audio has accumulated yet.  Low value = carrier present.
-    double ingest(const IQBlock& block, bool tx)
+    // Local-backend TX: demodulate, de-emphasise, re-insert the optional
+    // CTCSS, pre-emphasise and re-modulate the block.
+    void processLocalTx(const IQBlock& block)
     {
         std::vector<ComplexFloat> txIq;
-        if (tx)
-            txIq.reserve(block.count);
+        txIq.reserve(block.count);
 
         for (std::size_t n = 0; n < block.count; ++n) {
             const float raw = m_disc.process(block.samples[n]);
-            m_audio.push_back(raw);
-
-            if (tx) {
-                const float flat   = m_deemph.process(raw);
-                const float dcFree = m_dcBlock.process(flat);
-                const float ctcss  = m_config.ctcssTx > 0.0 ? m_ctcssGen.process() : 0.0F;
-                const float pre    = m_preemph.process(dcFree + ctcss);
-                txIq.push_back(m_fmMod.process(pre));
-            }
+            const float flat   = m_deemph.process(raw);
+            const float dcFree = m_dcBlock.process(flat);
+            const float ctcss  = m_config.ctcssTx > 0.0 ? m_ctcssGen.process() : 0.0F;
+            const float pre    = m_preemph.process(dcFree + ctcss);
+            txIq.push_back(m_fmMod.process(pre));
         }
 
-        // Bounded history for the noise window.
-        if (m_audio.size() > kWindow * 4)
-            m_audio.erase(m_audio.begin(), m_audio.end() - kWindow * 2);
-
-        if (m_audio.size() < kWindow)
-            return -1.0;
-
-        const auto begin = m_audio.end() - static_cast<std::ptrdiff_t>(kWindow);
-
-        // Remove the discriminator DC component (carrier offset) so it cannot
-        // leak into the noise measurement.
-        double mean = 0.0;
-        for (auto it = begin; it != m_audio.end(); ++it)
-            mean += static_cast<double>(*it);
-        mean /= static_cast<double>(kWindow);
-
-        std::vector<float> centered(kWindow);
-        double totalEnergy = 0.0;
-        std::size_t idx = 0;
-        for (auto it = begin; it != m_audio.end(); ++it, ++idx) {
-            const double v = static_cast<double>(*it) - mean;
-            centered[idx] = static_cast<float>(v);
-            totalEnergy += v * v;
-        }
-
-        // Noise squelch: high-pass the window above the voice band and compare
-        // its energy with the total discriminator energy.  Without a carrier
-        // the discriminator output is broadband noise (ratio around 1.1-1.3),
-        // while a carrier quiets that out-of-audio-band noise; speech keeps
-        // talking below the cutoff, so soft syllables no longer close the
-        // squelch the way a full-band differentiator did.
-        double hfEnergy = 0.0;
-        double hpPrev = static_cast<double>(centered[0]);
-        for (std::size_t i = 1; i < centered.size(); ++i) {
-            const double x = static_cast<double>(centered[i]);
-            const double hp = x - kNoiseHpCoef * hpPrev;
-            hpPrev = x;
-            hfEnergy += hp * hp;
-        }
-        m_lastSquelchNoise = totalEnergy > 1e-12 ? hfEnergy / totalEnergy : 1.0;
-        const auto nowNoise = std::chrono::steady_clock::now();
-        if (m_lastSquelchNoise < m_config.squelchNoiseRatio &&
-            nowNoise - m_lastNoiseLog > std::chrono::seconds(2)) {
-            m_lastNoiseLog = nowNoise;
-            std::fprintf(stderr, "FM squelch: carrier, noise ratio %.3f\n", m_lastSquelchNoise);
-        }
-
-        if (tx && m_tx && !txIq.empty())
+        if (m_tx && !txIq.empty())
             m_tx->writeIQ(txIq.data(), txIq.size());
-
-        return m_lastSquelchNoise;
     }
 
-    static constexpr double      kSampleRate   = 125000.0;
-    static constexpr std::size_t kWindow       = 4096;
-    // First-order high-pass at 8 kHz for the noise-squelch metric:
-    // coefficient = exp(-2*pi*8000/125000).  Voice below ~3 kHz is rejected,
-    // broadband discriminator noise passes through.
-    static constexpr double      kNoiseHpCoef  = 0.66896;
+    static double blockRssiDb(const IQBlock& block)
+    {
+        if (block.count == 0)
+            return -120.0;
+        double power = 0.0;
+        for (std::size_t n = 0; n < block.count; ++n) {
+            const double i = static_cast<double>(block.samples[n].i);
+            const double q = static_cast<double>(block.samples[n].q);
+            power += i * i + q * q;
+        }
+        power /= static_cast<double>(block.count);
+        return 10.0 * std::log10(power + 1e-12);
+    }
+
+    static constexpr double kSampleRate = 125000.0;
     // FM is the fallback mode: hold the carrier this long (in samples, so the
     // result does not depend on the dispatch block size) before claiming it.
     // Digital modes win the arbitration when they confirm, and the dispatcher
@@ -394,15 +341,14 @@ private:
     fm::FmModulator     m_fmMod;
     fm::CtcssGenerator  m_ctcssGen;
 
-    std::vector<float> m_audio;
     bool  m_active = false;
     bool  m_hangActive = false;
     bool  m_sqlOpen = false;
     std::chrono::steady_clock::time_point m_carrierLostAt{};
     unsigned m_carrierLostBlocks = 0;
     float m_lastConfidence = 0.0F;
-    double m_lastSquelchNoise = 1.0;
-    std::chrono::steady_clock::time_point m_lastNoiseLog{};
+    double m_lastRssiDb = -120.0;
+    std::chrono::steady_clock::time_point m_lastRssiLog{};
     std::uint64_t m_confirmSamples = 0;
     std::chrono::steady_clock::time_point m_hangStart{};
 };

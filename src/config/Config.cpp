@@ -258,8 +258,8 @@ Config loadConfig(const std::string& path)
     config.fm.enabled = asBool(*fm, "enabled");
     if (fm->map.count("ctcss_tx"))
         config.fm.ctcssTx = asDouble(*fm, "ctcss_tx");
-    if (fm->map.count("squelch_noise_ratio"))
-        config.fm.squelchNoiseRatio = asDouble(*fm, "squelch_noise_ratio");
+    if (fm->map.count("rssi_squelch_db"))
+        config.fm.rssiSquelchDb = asDouble(*fm, "rssi_squelch_db");
     if (fm->map.count("ctcss")) {
         // Backwards-compatible alias: one tone for both RX and TX.
         const double ctcss = asDouble(*fm, "ctcss");
@@ -400,6 +400,7 @@ std::string serializeConfig(const Config& config)
     out << "  rx_freq: " << config.frontend.rxFrequency << '\n';
     out << "  tx_freq: " << config.frontend.txFrequency << '\n';
     out << "  tx_power: " << config.frontend.power << '\n';
+    out << "  squelch: " << config.frontend.squelch << '\n';
     out << "  block_size: " << config.frontend.blockSize << '\n';
     out << "  spi:\n";
     out << "    device: " << config.frontend.spiDevice << '\n';
@@ -423,7 +424,7 @@ std::string serializeConfig(const Config& config)
     out << "  fm:\n";
     out << "    enabled: " << (config.fm.enabled ? "true" : "false") << '\n';
     out << "    ctcss_tx: " << formatDouble(config.fm.ctcssTx) << '\n';
-    out << "    squelch_noise_ratio: " << formatDouble(config.fm.squelchNoiseRatio) << '\n';
+    out << "    rssi_squelch_db: " << formatDouble(config.fm.rssiSquelchDb) << '\n';
     out << "    hang_time_ms: " << config.fm.hangTimeMs << '\n';
     out << "    backend: " << config.fm.backend << '\n';
     out << "    svxlink:\n";

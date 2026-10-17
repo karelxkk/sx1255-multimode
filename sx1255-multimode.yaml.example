@@ -9,6 +9,7 @@ frontend:
   rx_freq: 430975000          # RX 430.975 MHz
   tx_freq: 438575000          # TX 438.575 MHz
   tx_power: 10                # výkon v dBm (0-10)
+  squelch: -55                # RSSI práh pro FM (dBFS z výkonu IQ)
   block_size: 2048            # počet IQ vzorků na blok
 
   spi:
@@ -42,11 +43,7 @@ frontend:
 modes:
   fm:
     enabled: true             # zapnout FM plugin
-    # Detekce nosné je šumová, bez CTCSS.  Detektor horní propustí nad
-    # hovorovým pásmem odfiltruje řeč a porovná energii šumu s celkovou:
-    # otevřený kanál má poměr kolem 1.0-1.3, nosná (i slabá, s řečí) ho
-    # srazí pod práh.  Pod touto hodnotou se RX považuje za otevřený.
-    squelch_noise_ratio: 0.65 # práh šumové squelche (nižší = tužší)
+    # Detekce nosné je RSSI, bez CTCSS. Práh se bere z frontend.squelch.
     # 0 = multimode tón na TX negeneruje.  Při backendu svxlink ho generuje
     # SVXLink sám (TX_CTCSS=ALWAYS a CTCSS_LEVEL v sekci [Tx1]); při backendu
     # local si tón musí vyrobit multimode, proto tam patří 88.5.

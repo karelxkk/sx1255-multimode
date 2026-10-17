@@ -22,7 +22,7 @@ vyžadovat změnu frontend vrstvy.*
 
 | Režim | Stav | Detekce |
 |---|---|---|
-| FM (NFM) | plný RX→TX převaděč (bridge) | šumová squelch + hang timer + volitelná regenerace CTCSS na TX |
+| FM (NFM) | plný RX→TX převaděč (bridge) | RSSI squelch + hang timer + volitelná regenerace CTCSS na TX |
 | D-Star | lokální RX→TX převaděč + DSRP gateway | GMSK demodulace + FEC hlavička + re-modulace DV rámců/EOT + DSRP síť |
 | M17 | 1:1 port z m17-gateway | 4FSK demod + sync + LSF/stream/packet dekódování |
 

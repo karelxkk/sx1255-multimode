@@ -73,11 +73,11 @@ int main()
         return 2;
     if (config.frontend.power != 10)
         return 3;
-    if (config.frontend.squelch != -120)
+    if (config.frontend.squelch != -55)
         return 4;
     if (!config.fm.enabled)
         return 5;
-    if (config.fm.squelchNoiseRatio < 0.55 || config.fm.squelchNoiseRatio > 0.75)
+    if (config.fm.rssiSquelchDb < -60.0 || config.fm.rssiSquelchDb > -50.0)
         return 6;
     if (config.dstar.enabled)
         return 7;

@@ -18,8 +18,8 @@ Squelch otevírá **multimode** šumovou detekcí nosné:
 
 ```text
 FM nosná (klidně i bez subtónu)
-  -> multimode FM plugin změří poměr šumu z diskriminátoru (squelch_noise_ratio)
-  -> nosná utiší diskriminátor -> SQL PTY 'O'
+  -> multimode FM plugin změří RSSI (frontend.squelch)
+  -> nosná zvedne RSSI nad práh -> SQL PTY 'O'
   -> snd-aloop: RX audio teče do SVXLink Rx1
   -> SVXLink [Rx1] SQL_DET=PTY otevře SQL
   -> RepeaterLogic klíčuje Tx1 -> PTT 'T' na PTY -> multimode klíčuje SX1255

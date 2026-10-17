@@ -13,10 +13,10 @@ struct FrontendConfig {
     Hertz       rxFrequency = 430975000;
     Hertz       txFrequency = 438575000;
     dBm         power       = 10;
-    // Reserved: RSSI-based squelch is not implemented yet.  Kept in the
-    // frontend interface for a future implementation; the YAML key is
-    // optional and no longer part of the example configuration.
-    dBm         squelch     = -120;
+    // RSSI squelch threshold used by FM.  The SX1255 has no calibrated RSSI
+    // register, so this is the IQ-power value in relative dBFS: an open
+    // channel sits around -60, a carrier raises it above this.
+    dBm         squelch     = -55;
     std::size_t blockSize   = 2048;
 
     std::string spiDevice  = "/dev/spidev0.0";
@@ -64,12 +64,10 @@ struct FmSvxlinkConfig {
 struct FmConfig {
     bool   enabled    = true;
     double ctcssTx    = 88.5;   // CTCSS regenerated on TX (0 disables)
-    // Carrier detection is done by noise, not by a CTCSS tone.  The detector
-    // high-passes the discriminator output above the voice band and compares
-    // that energy with the total: open-channel noise sits around 1.0-1.3,
-    // while a carrier (with or without speech) quiets the out-of-band noise
-    // well below this.  Below this ratio the squelch opens.
-    double squelchNoiseRatio = 0.65;
+    // FM carrier detection uses RSSI: the plugin measures the mean IQ power
+    // of every block and opens once it stays above this threshold long
+    // enough.  This is the same dBFS scale as the web dashboard RSSI.
+    double rssiSquelchDb = -55.0;
     int    hangTimeMs = 3000;   // local-repeat TX tail after carrier loss
     std::string backend = "local";  // "local" | "svxlink"
     FmSvxlinkConfig svxlink;

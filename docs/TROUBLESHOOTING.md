@@ -45,7 +45,7 @@ pod real-time (viz `docs/PERFORMANCE.md`).
 
 ## Žádné detekce
 
-- Ověř frekvence RX/TX a práh `squelch_noise_ratio` v konfiguraci,
+- Ověř frekvence RX/TX a práh `frontend.squelch` v konfiguraci,
 - `GET /api/status` ukazuje RSSI a čítače detekcí,
 - nahraj provoz přes `--capture` a přehraj ho na PC, kde můžeš krok po kroku
   ladit bez rádia,

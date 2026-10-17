@@ -38,7 +38,7 @@ int main()
     fmConfig.ctcssTx = 88.5;
     fmConfig.hangTimeMs = 100;
 
-    // Valid CTCSS: FM-modulated 88.5 Hz tone, debounced over several blocks.
+    // Any carrier above the RSSI threshold opens FM, even without modulation.
     {
         auto fm = createFmPlugin(fmConfig);
         auto iq = fmModulated(88.5, 500.0, 65536);
@@ -67,27 +67,30 @@ int main()
         }
     }
 
-    // An off-frequency carrier (constant discriminator DC) must not trigger.
+    // An off-frequency carrier is still a carrier: RSSI must open the squelch.
     {
         auto fm = createFmPlugin(fmConfig);
-        std::vector<ComplexFloat> iq(16384);
+        std::vector<ComplexFloat> iq(65536);
         double phase = 0.0;
         for (std::size_t n = 0; n < iq.size(); ++n) {
             phase += 2.0 * kPi * 700.0 / kSampleRate;
             iq[n] = {static_cast<float>(std::cos(phase)),
                      static_cast<float>(std::sin(phase))};
         }
+        bool detected = false;
         for (std::size_t off = 0; off < iq.size(); off += 2048) {
             const IQBlock block{0, iq.data() + off,
                                 std::min<std::size_t>(2048, iq.size() - off),
                                 kSampleRate};
             if (fm->detect(block).detected)
-                return 3;
+                detected = true;
         }
+        if (!detected)
+            return 3;
     }
 
-    // An active FM session must release after the hang timer once the CTCSS
-    // tone disappears.
+    // An active FM session must release after the hang timer once the carrier
+    // disappears.
     {
         auto fm = createFmPlugin(fmConfig);
         SessionContext ctx;

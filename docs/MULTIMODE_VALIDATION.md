@@ -74,10 +74,10 @@ digitální implementací s předností.
 ### FM je poslední
 
 FM detekce je z principu „nejměkčí“: aktivuje se na jakoukoli nosnou, která
-utlumí šum na výstupu diskriminátoru (`squelch_noise_ratio`). Protože digitální
-provoz je také nosná, FM nesmí přebíjet digitální detekce. FM je záchytná síť,
-která se uplatní, jen když žádný digitální režim nedetekuje; pokud FM kanál
-získá dřív, vyšší priorita digitálního režimu ho po potvrzení převezme.
+zvedne RSSI nad práh (`frontend.squelch`). Protože digitální provoz je také
+nosná, FM nesmí přebíjet digitální detekce. FM je záchytná síť, která se
+uplatní, jen když žádný digitální režim nedetekuje; pokud FM kanál získá
+dřív, vyšší priorita digitálního režimu ho po potvrzení převezme.
 
 ## Současná aktivita
 
@@ -109,7 +109,7 @@ Unit testy pokrývají každou vrstvu zvlášť:
   falešnému gateway procesu.
 - `test_dstar_netplugin` — síť → RF: DSRP gateway → plugin → falešný
   `ITransmit`/arbiter.
-- `test_fm_detect` — šumová squelch FM nosné.
+- `test_fm_detect` — RSSI squelch FM nosné.
 - `test_m17_loopback` — M17 TX → RX dekóduje identický LSF.
 - `test_session_manager` — priority a přechody stavů.
 - `test_runtime_stats` — čítače detekcí/relací a JSON výstupy HTTP serveru.
