@@ -153,6 +153,17 @@ public:
         const auto now = std::chrono::steady_clock::now();
         const bool carrier = rssi >= m_config.rssiSquelchDb;
 
+        // Track the hang tail for both backends.  In the SVXLink backend this
+        // keeps the FM session (and its immediate carrier handling) alive over
+        // SVXLink's own IDLE_TIMEOUT, so re-keying during that window does not
+        // have to go through the slower RSSI confirmation.
+        if (carrier) {
+            m_hangActive = false;
+        } else if (!m_hangActive) {
+            m_hangActive = true;
+            m_hangStart = now;
+        }
+
         if (m_useSvxlink) {
             if (carrier && m_bridge)
                 m_bridge->pushRxIq(block.samples, block.count);
@@ -171,17 +182,13 @@ public:
             // release the session once SVXLink has dropped PTT too.
             if (m_bridge && (m_bridge->transmitting() || m_bridge->pttKeyed()))
                 return true;
+            if (m_hangActive &&
+                now - m_hangStart < std::chrono::milliseconds(m_config.hangTimeMs))
+                return true;
             return false;
         }
 
         processLocalTx(block);
-        if (carrier) {
-            m_hangActive = false;
-        } else if (!m_hangActive) {
-            m_hangActive = true;
-            m_hangStart = now;
-        }
-
         // Keep the session (and PTT) during the hang tail.
         if (m_hangActive &&
             now - m_hangStart >= std::chrono::milliseconds(m_config.hangTimeMs))

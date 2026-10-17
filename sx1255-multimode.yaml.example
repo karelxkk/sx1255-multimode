@@ -51,7 +51,8 @@ modes:
     # SVXLink sám (TX_CTCSS=ALWAYS a CTCSS_LEVEL v sekci [Tx1]); při backendu
     # local si tón musí vyrobit multimode, proto tam patří 88.5.
     ctcss_tx: 0               # CTCSS tón generovaný na TX (88.5 pro local)
-    hang_time_ms: 3000        # dojezd po ztrátě nosné
+    hang_time_ms: 3000        # dojezd po ztrátě nosné; při backendu svxlink
+                              # nastav na SVXLink IDLE_TIMEOUT (typicky 10000)
 
     # backend: local  = multimode sám dělá FM převaděč (CTCSS RX/TX, hang)
     # backend: svxlink = multimode je jen RF<->audio bridge, logiku, squelch,
