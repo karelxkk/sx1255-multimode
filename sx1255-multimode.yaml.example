@@ -42,11 +42,11 @@ frontend:
 modes:
   fm:
     enabled: true             # zapnout FM plugin
-    # Detekce nosné je šumová, bez CTCSS.  Bez nosné má výstup FM
-    # diskriminátoru šum s rostoucím spektrem (poměr diferencované a celkové
-    # energie kolem 1.3); nosná diskriminátor utiší (naměřeno ~0.05).  Pod
-    # tímto poměrem se RX považuje za otevřený.
-    squelch_noise_ratio: 0.5  # práh šumové squelche (nižší = tužší)
+    # Detekce nosné je šumová, bez CTCSS.  Detektor horní propustí nad
+    # hovorovým pásmem odfiltruje řeč a porovná energii šumu s celkovou:
+    # otevřený kanál má poměr kolem 1.0-1.3, nosná (i slabá, s řečí) ho
+    # srazí pod práh.  Pod touto hodnotou se RX považuje za otevřený.
+    squelch_noise_ratio: 0.65 # práh šumové squelche (nižší = tužší)
     # 0 = multimode tón na TX negeneruje.  Při backendu svxlink ho generuje
     # SVXLink sám (TX_CTCSS=ALWAYS a CTCSS_LEVEL v sekci [Tx1]); při backendu
     # local si tón musí vyrobit multimode, proto tam patří 88.5.

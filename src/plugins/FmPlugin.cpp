@@ -331,14 +331,19 @@ private:
             totalEnergy += v * v;
         }
 
-        // Noise squelch: differentiate the window (a +6 dB/oct emphasis) and
-        // compare its energy with the total.  Noise fills the whole band, so
-        // the ratio is around 1.3; a carrier quiets the demodulator and the
-        // ratio collapses (0.05 measured on air).  Level independent.
+        // Noise squelch: high-pass the window above the voice band and compare
+        // its energy with the total discriminator energy.  Without a carrier
+        // the discriminator output is broadband noise (ratio around 1.1-1.3),
+        // while a carrier quiets that out-of-audio-band noise; speech keeps
+        // talking below the cutoff, so soft syllables no longer close the
+        // squelch the way a full-band differentiator did.
         double hfEnergy = 0.0;
+        double hpPrev = static_cast<double>(centered[0]);
         for (std::size_t i = 1; i < centered.size(); ++i) {
-            const double d = static_cast<double>(centered[i]) - centered[i - 1];
-            hfEnergy += d * d;
+            const double x = static_cast<double>(centered[i]);
+            const double hp = x - kNoiseHpCoef * hpPrev;
+            hpPrev = x;
+            hfEnergy += hp * hp;
         }
         m_lastSquelchNoise = totalEnergy > 1e-12 ? hfEnergy / totalEnergy : 1.0;
         const auto nowNoise = std::chrono::steady_clock::now();
@@ -356,6 +361,10 @@ private:
 
     static constexpr double      kSampleRate   = 125000.0;
     static constexpr std::size_t kWindow       = 4096;
+    // First-order high-pass at 8 kHz for the noise-squelch metric:
+    // coefficient = exp(-2*pi*8000/125000).  Voice below ~3 kHz is rejected,
+    // broadband discriminator noise passes through.
+    static constexpr double      kNoiseHpCoef  = 0.66896;
     // FM is the fallback mode: hold the carrier this long (in samples, so the
     // result does not depend on the dispatch block size) before claiming it.
     // Digital modes win the arbitration when they confirm, and the dispatcher
