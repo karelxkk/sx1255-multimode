@@ -369,20 +369,14 @@ public:
             std::chrono::milliseconds(m_m17Config.idleTimeoutMs))
             m_decoder.expireRetention();
         feed(block);
-        // A valid LSF alone is not enough to claim the channel: a single false
-        // CRC-passing header used to switch the mode.  The decoder is still fed
-        // immediately (so no packet is lost), but detection is only latched
-        // after min_sync_burst useful syncs and stays latched while the decoder
-        // is following a stream or packet.
-        if (m_detected && m_decoder.syncedType() != 0)
-            m_modeDetected = true;
-        if (m_decoder.syncedType() == 0)
-            m_modeDetected = false;
-        // Keep decoding below the gate so packets are not lost, but do not let
-        // a noise-floor decoder result claim the M17 mode.
-        if (rssi < m_m17Config.rssiGateDbfs)
-            m_modeDetected = false;
-        const bool detected = m_modeDetected;
+        // A valid LSF is the acquisition trigger.  Do not make M17 wait for
+        // several stream syncs: a short packet or a brief voice burst would
+        // otherwise lose the channel to FM.  The RSSI gate is the protection
+        // against noise-floor false headers.
+        const bool raw = m_lsfDecoded || m_detected ||
+                         m_decoder.syncedType() != 0;
+        const bool detected = raw && rssi >= m_m17Config.rssiGateDbfs;
+        m_modeDetected = detected;
         if (detected) {
             if (m_countDetections && !m_detectionReported) {
                 m_detectionReported = true;
