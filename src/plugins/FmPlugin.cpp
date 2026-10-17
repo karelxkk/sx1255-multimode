@@ -106,8 +106,15 @@ public:
             std::fprintf(stderr, "FM squelch: carrier, RSSI %.1f dB\n", rssi);
         }
 
-        if (detected && m_stats)
-            m_stats->recordDetection(Mode::FM);
+        if (detected) {
+            if (!m_detectionReported) {
+                m_detectionReported = true;
+                if (m_stats)
+                    m_stats->recordDetection(Mode::FM);
+            }
+        } else {
+            m_detectionReported = false;
+        }
         m_lastConfidence = confidence;
         return {detected, confidence};
     }
@@ -205,6 +212,13 @@ public:
         } else if (m_tx) {
             m_tx->setPtt(false);
         }
+    }
+
+    // Another mode won the channel: drop the RSSI confirmation window so FM
+    // cannot immediately take over when that session ends.
+    void clearPendingDetection() override
+    {
+        m_confirmSamples = 0;
     }
 
     PluginTelemetry telemetry() const override
@@ -347,6 +361,7 @@ private:
     std::chrono::steady_clock::time_point m_lastRssiLog{};
     std::uint64_t m_confirmSamples = 0;
     std::uint64_t m_confirmSamplesNeeded = 87500;
+    bool m_detectionReported = false;
     std::chrono::steady_clock::time_point m_hangStart{};
 };
 

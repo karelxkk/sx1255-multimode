@@ -1,4 +1,5 @@
 #include "sx1255/config/Config.hpp"
+#include "sx1255/diag/SystemStatistics.hpp"
 #include "sx1255/plugins/PluginFactory.hpp"
 
 #include <algorithm>
@@ -87,6 +88,21 @@ int main()
         }
         if (!detected)
             return 3;
+    }
+
+    // A continuous carrier is one detection, not one per IQ block.
+    {
+        SystemStatistics stats;
+        auto fm = createFmPlugin(fmConfig, &stats);
+        auto iq = fmModulated(88.5, 500.0, 131072);
+        for (std::size_t off = 0; off < iq.size(); off += 2048) {
+            const IQBlock block{0, iq.data() + off,
+                                std::min<std::size_t>(2048, iq.size() - off),
+                                kSampleRate};
+            fm->detect(block);
+        }
+        if (stats.fmDetected() != 1)
+            return 6;
     }
 
     // An active FM session must release after the hang timer once the carrier
