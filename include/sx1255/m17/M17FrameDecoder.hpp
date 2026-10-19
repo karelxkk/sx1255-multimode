@@ -68,6 +68,7 @@ struct FrameAudit {
     SoftbitStats softbitStats;
     int viterbiMetric = -1;
     int channelErrors = -1;
+    int channelBits = 0;
     bool viterbiAttempted = false;
     bool viterbiOk = false;
     int golayOk = 0;
@@ -203,6 +204,7 @@ public:
     const LSF* currentLSF() const { return m_lsf ? &m_lsf.value() : nullptr; }
     Counters counters() const { return m_counters; }
     LayerCountersSnapshot layerCounters() const;
+    double currentBerPercent() const;
     FrameAudit lastFrameAudit() const;
     void resetLayerCounters();
     std::uint16_t syncedType() const { return m_syncedType; }

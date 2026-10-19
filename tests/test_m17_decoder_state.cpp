@@ -151,6 +151,13 @@ int main()
                         static_cast<unsigned long long>(layers.frameFail));
             ++failures;
         }
+        if (decoder.currentBerPercent() <= 0.0 || audit.channelBits != 368 ||
+            audit.channelErrors <= 0) {
+            std::printf("corrupt LSF BER: FAIL ber=%.3f bits=%d errors=%d\n",
+                        decoder.currentBerPercent(), audit.channelBits,
+                        audit.channelErrors);
+            ++failures;
+        }
         decoder.resetLayerCounters();
         if (decoder.layerCounters().syncDetected != 0 ||
             decoder.layerCounters().crcFail != 0) {

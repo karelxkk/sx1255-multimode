@@ -67,6 +67,9 @@ class M17Plugin final : public IModePlugin {
         double afcHz = 0.0;
         float syncDistance = 0.0F;
         double softbitRms = 0.0;
+        double berPercent = -1.0;
+        int channelErrors = -1;
+        int channelBits = 0;
         int viterbiMetric = -1;
         bool viterbiOk = false;
         int golayOk = 0;
@@ -519,6 +522,19 @@ public:
         t.metrics["sync_misses"] = static_cast<double>(m_syncMisses);
         t.metrics["average_symbol_level"] = m_averageSymbolLevel;
         t.metrics["rssi_at_sync"] = m_rssiAtSync;
+        double berSum = 0.0;
+        int berCount = 0;
+        for (const FrameAuditEntry& entry : m_frameAudits) {
+            if (entry.berPercent >= 0.0) {
+                berSum += entry.berPercent;
+                ++berCount;
+            }
+        }
+        t.metrics["ber_percent"] = m_decoder.currentBerPercent();
+        t.metrics["last_frame_ber_percent"] =
+            m_frameAudits.empty() ? 0.0 : m_frameAudits.back().berPercent;
+        t.metrics["average_ber_percent"] =
+            berCount > 0 ? berSum / berCount : 0.0;
         const m17::LayerCountersSnapshot layers = m_decoder.layerCounters();
         t.metrics["sync_detected"] = static_cast<double>(layers.syncDetected);
         t.metrics["lsf_ok"] = static_cast<double>(layers.lsfOk);
@@ -579,6 +595,14 @@ public:
     {
         std::lock_guard<std::mutex> lock(m_diagMutex);
         const m17::LayerCountersSnapshot layers = m_decoder.layerCounters();
+        double berSum = 0.0;
+        int berCount = 0;
+        for (const FrameAuditEntry& entry : m_frameAudits) {
+            if (entry.berPercent >= 0.0) {
+                berSum += entry.berPercent;
+                ++berCount;
+            }
+        }
         std::ostringstream out;
         out << std::fixed << std::setprecision(3);
         out << "{\"afc_correction_hz\":" << m_diagAfcHz
@@ -589,6 +613,11 @@ public:
             << ",\"sync_misses\":" << m_syncMisses
             << ",\"average_symbol_level\":" << m_averageSymbolLevel
             << ",\"rssi_at_sync\":" << m_rssiAtSync
+            << ",\"ber_percent\":" << m_decoder.currentBerPercent()
+            << ",\"last_frame_ber_percent\":"
+            << (m_frameAudits.empty() ? 0.0 : m_frameAudits.back().berPercent)
+            << ",\"average_ber_percent\":"
+            << (berCount > 0 ? berSum / berCount : 0.0)
             << ",\"sync_detected\":" << layers.syncDetected
             << ",\"lsf_ok\":" << layers.lsfOk
             << ",\"lsf_fail\":" << layers.lsfFail
@@ -618,6 +647,9 @@ public:
                 << ",\"afc_correction_hz\":" << entry.afcHz
                 << ",\"sync_distance\":" << entry.syncDistance
                 << ",\"softbit_rms\":" << entry.softbitRms
+                << ",\"ber_percent\":" << entry.berPercent
+                << ",\"channel_errors\":" << entry.channelErrors
+                << ",\"channel_bits\":" << entry.channelBits
                 << ",\"viterbi_metric\":" << entry.viterbiMetric
                 << ",\"viterbi_ok\":" << (entry.viterbiOk ? "true" : "false")
                 << ",\"golay_ok\":" << entry.golayOk
@@ -732,6 +764,10 @@ private:
         entry.afcHz = m_afc.offsetHz(25000.0);
         entry.syncDistance = evaluation.distance;
         entry.softbitRms = audit.softbitStats.rms;
+        entry.channelErrors = audit.channelErrors;
+        entry.channelBits = audit.channelBits;
+        if (audit.channelErrors >= 0 && audit.channelBits > 0)
+            entry.berPercent = 100.0 * audit.channelErrors / audit.channelBits;
         entry.viterbiMetric = audit.viterbiMetric;
         entry.viterbiOk = audit.viterbiOk;
         entry.golayOk = audit.golayOk;
@@ -788,6 +824,9 @@ private:
                      << ",\"afc_correction_hz\":" << entry.afcHz
                      << ",\"sync_distance\":" << entry.syncDistance
                      << ",\"softbit_rms\":" << entry.softbitRms
+                     << ",\"ber_percent\":" << entry.berPercent
+                     << ",\"channel_errors\":" << entry.channelErrors
+                     << ",\"channel_bits\":" << entry.channelBits
                      << ",\"softbit_stats\":{\"count\":" << audit.softbitStats.count
                      << ",\"mean\":" << audit.softbitStats.mean
                      << ",\"rms\":" << audit.softbitStats.rms
@@ -852,7 +891,8 @@ private:
              << " AFC=" << std::showpos << std::setprecision(0) << entry.afcHz
              << std::noshowpos << "Hz SyncDistance=" << std::setprecision(2)
              << entry.syncDistance << " SoftbitRMS=" << std::setprecision(3)
-             << entry.softbitRms << " ViterbiMetric=" << entry.viterbiMetric
+             << entry.softbitRms << " BER=" << std::setprecision(2)
+             << entry.berPercent << "% ViterbiMetric=" << entry.viterbiMetric
              << " Viterbi=" << (entry.viterbiOk ? "OK" : "FAIL")
              << " Golay=" << (entry.golayOk + entry.golayFail == 0
                                   ? "N/A"

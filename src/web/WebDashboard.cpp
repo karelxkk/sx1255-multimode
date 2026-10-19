@@ -80,13 +80,14 @@ const std::string& dashboardHtml()
       <div class="cell"><b id="m17-golay">-</b><span>Golay ok / fail</span></div>
       <div class="cell"><b id="m17-viterbi">-</b><span>Viterbi ok / fail</span></div>
       <div class="cell"><b id="m17-frame">-</b><span>frame ok / fail</span></div>
+      <div class="cell"><b id="m17-ber">-</b><span>BER last / avg [%]</span></div>
     </div>
     <div style="height:8px"></div>
     <button id="m17-reset" type="button">Reset M17 statistik</button>
     <div style="height:8px"></div>
     <div class="diag-wrap">
       <table class="diag-table">
-        <thead><tr><th>čas</th><th>RSSI</th><th>AFC Hz</th><th>sync dist</th><th>typ</th><th>výsledek</th></tr></thead>
+        <thead><tr><th>čas</th><th>RSSI</th><th>AFC Hz</th><th>sync dist</th><th>BER %</th><th>typ</th><th>výsledek</th></tr></thead>
         <tbody id="m17-candidates"></tbody>
       </table>
     </div>
@@ -247,6 +248,7 @@ async function refreshM17Diagnostics(){
   $('m17-golay').textContent = String(d.golay_ok || 0) + ' / ' + String(d.golay_fail || 0);
   $('m17-viterbi').textContent = String(d.viterbi_ok || 0) + ' / ' + String(d.viterbi_fail || 0);
   $('m17-frame').textContent = String(d.frame_ok || 0) + ' / ' + String(d.frame_fail || 0);
+  $('m17-ber').textContent = fixed(d.last_frame_ber_percent, 2) + ' / ' + fixed(d.average_ber_percent, 2);
   const body = $('m17-candidates');
   body.innerHTML = '';
   const rows = (d.candidates || []).slice().reverse();
@@ -254,7 +256,7 @@ async function refreshM17Diagnostics(){
     const tr = document.createElement('tr');
     const cells = [
       c.timestamp, fixed(c.rssi_dbfs, 1), fixed(c.afc_correction_hz, 0),
-      fixed(c.sync_distance, 2), c.sync_type,
+      fixed(c.sync_distance, 2), fixed(c.ber_percent, 2), c.sync_type,
     ];
     for (const value of cells){
       const td = document.createElement('td'); td.textContent = value; tr.appendChild(td);

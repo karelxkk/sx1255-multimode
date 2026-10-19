@@ -35,6 +35,9 @@ struct FrameRecord {
     double afcHz = 0.0;
     float syncDistance = 0.0F;
     double softbitRms = 0.0;
+    double berPercent = -1.0;
+    int channelErrors = -1;
+    int channelBits = 0;
     double averageSymbolLevel = 0.0;
     int viterbiMetric = -1;
     bool viterbiOk = false;
@@ -182,6 +185,10 @@ bool analyzeFile(const std::string& path, bool raw,
         record.afcHz = afc.offsetHz(25000.0);
         record.syncDistance = evaluation.distance;
         record.softbitRms = audit.softbitStats.rms;
+        record.channelErrors = audit.channelErrors;
+        record.channelBits = audit.channelBits;
+        if (audit.channelErrors >= 0 && audit.channelBits > 0)
+            record.berPercent = 100.0 * audit.channelErrors / audit.channelBits;
         double symbolSum = 0.0;
         const std::vector<Symbol>& payloadSymbols = syncPtr->lastPayloadSymbols();
         for (const Symbol symbol : payloadSymbols)
@@ -211,6 +218,7 @@ bool analyzeFile(const std::string& path, bool raw,
                    << "\",\"rssi_dbfs\":" << currentRssi
                    << ",\"afc_correction_hz\":" << record.afcHz
                    << ",\"sync_distance\":" << record.syncDistance
+                   << ",\"ber_percent\":" << record.berPercent
                    << ",\"symbols\":";
             writeSymbolArray(*trace, syncPtr->lastPayloadSymbols());
             *trace << ",\"softbits\":";
@@ -340,6 +348,9 @@ int main(int argc, char** argv)
             << ",\"afc_correction_hz\":" << f.afcHz
             << ",\"sync_distance\":" << f.syncDistance
             << ",\"softbit_rms\":" << f.softbitRms
+            << ",\"ber_percent\":" << f.berPercent
+            << ",\"channel_errors\":" << f.channelErrors
+            << ",\"channel_bits\":" << f.channelBits
             << ",\"average_symbol_level\":" << f.averageSymbolLevel
             << ",\"softbit_saturated_low\":" << f.softbits.saturated_low
             << ",\"softbit_saturated_high\":" << f.softbits.saturated_high

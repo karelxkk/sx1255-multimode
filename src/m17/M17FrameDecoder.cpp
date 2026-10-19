@@ -843,6 +843,16 @@ LayerCountersSnapshot Decoder::layerCounters() const
     return snapshot;
 }
 
+double Decoder::currentBerPercent() const
+{
+    if (m_bits > 0)
+        return ber();
+    std::lock_guard<std::mutex> lock(m_auditMutex);
+    if (m_lastAudit.channelBits > 0 && m_lastAudit.channelErrors >= 0)
+        return 100.0 * m_lastAudit.channelErrors / m_lastAudit.channelBits;
+    return 0.0;
+}
+
 FrameAudit Decoder::lastFrameAudit() const
 {
     std::lock_guard<std::mutex> lock(m_auditMutex);
@@ -884,6 +894,7 @@ LSF Decoder::decodeLSF(const std::vector<SoftBit>& softBits, FrameAudit& audit)
                                    std::vector<bool>(LSFPuncturePattern.begin(), LSFPuncturePattern.end()),
                                    LSFFinalBit, dSoftBit);
     audit.channelErrors = e;
+    audit.channelBits = 368;
     audit.lsfStatus = -1;
     audit.hasLsf = true;
     audit.lsf = LSF::newFromBytes(lsf.data());
@@ -912,6 +923,7 @@ Decoder::StreamFrame Decoder::decodeStreamFrame(const std::vector<SoftBit>& soft
     audit.viterbiMetric = cost;
     audit.viterbiOutput = frameData;
     audit.viterbiOk = frameData.size() >= 1 + 2 + 16;
+    audit.channelBits = 272;
     audit.golayOk = golay.ok;
     audit.golayFail = golay.fail;
     audit.lich.assign(lich.begin(), lich.end());
@@ -955,6 +967,7 @@ std::pair<std::vector<std::uint8_t>, int> Decoder::decodePacketFrame(
     audit.viterbiMetric = cost;
     audit.viterbiOutput = pkt;
     audit.viterbiOk = pkt.size() >= 1 + 26;
+    audit.channelBits = 368;
 
     const int e = channelBitErrors(std::vector<std::uint8_t>(pkt.begin() + 1, pkt.begin() + 1 + 26),
                                    std::vector<bool>(PacketPuncturePattern.begin(), PacketPuncturePattern.end()),

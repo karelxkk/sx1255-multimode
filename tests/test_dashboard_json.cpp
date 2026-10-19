@@ -122,18 +122,23 @@ int main()
         plugins.find("\"golay_fail\"") == std::string::npos) {
         return 19;
     }
+    if (plugins.find("\"ber_percent\"") == std::string::npos)
+        return 23;
 
     const std::string m17diag = httpGet(18081, "/api/m17/diagnostics");
     if (m17diag.find("\"candidates\"") == std::string::npos)
         return 17;
     if (m17diag.find("\"frames\"") == std::string::npos ||
-        m17diag.find("\"softbit_stats\"") == std::string::npos) {
+        m17diag.find("\"softbit_stats\"") == std::string::npos ||
+        m17diag.find("\"average_ber_percent\"") == std::string::npos) {
         return 20;
     }
     if (html.find("M17 Diagnostics") == std::string::npos)
         return 18;
     if (html.find("Reset M17 statistik") == std::string::npos)
         return 21;
+    if (html.find("BER last / avg") == std::string::npos)
+        return 24;
     const std::string reset = httpRequest(
         18081, "POST", "/api/m17/diagnostics/reset");
     if (reset.find("\"ok\":true") == std::string::npos)
