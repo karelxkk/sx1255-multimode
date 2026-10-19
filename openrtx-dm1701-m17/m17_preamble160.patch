@@ -1,0 +1,17 @@
+--- a/openrtx/src/protocols/M17/Modulator.cpp
++++ b/openrtx/src/protocols/M17/Modulator.cpp
+@@
+-    // Generate baseband signal and then start transmission
+-    symbolsToBaseband();
+-    sendBaseband();
+-
+-    // Repeat baseband generation and transmission, this makes the preamble to
+-    // be long 80ms (two frames)
+-    symbolsToBaseband();
+-    sendBaseband();
++    // Generate and transmit a 160 ms preamble (four 40 ms frames).
++    for (size_t frame = 0; frame < 4; frame++)
++    {
++        symbolsToBaseband();
++        sendBaseband();
++    }
