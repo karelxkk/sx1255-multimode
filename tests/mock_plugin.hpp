@@ -14,6 +14,8 @@ public:
         int starts = 0;
         int processes = 0;
         int stops = 0;
+        int detects = 0;
+        int detectsWhileBlocked = 0;
     };
 
     using Detector = std::function<Detection(const IQBlock&)>;
@@ -32,6 +34,9 @@ public:
 
     Detection detect(const IQBlock& block) override
     {
+        ++log.detects;
+        if (rxBlocked)
+            ++log.detectsWhileBlocked;
         return m_detector ? m_detector(block) : Detection{false, 0.0F};
     }
 
@@ -54,12 +59,18 @@ public:
         active = false;
     }
 
+    void setRxBlocked(bool blocked) override
+    {
+        rxBlocked = blocked;
+    }
+
     std::string m_id;
     Mode m_mode;
     int m_priority;
     Detector m_detector;
     bool processResult = true;
     bool active = false;
+    bool rxBlocked = false;
     SessionContext lastContext;
     Log log;
 };

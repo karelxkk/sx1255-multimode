@@ -4,6 +4,7 @@
 #include "sx1255/core/SessionManager.hpp"
 #include "sx1255/frontend/ITransmit.hpp"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -45,7 +46,11 @@ void IQDispatcher::dispatch(const IQBlock& block)
             // the monitoring fan-out, but do not grant a new session.
             for (const auto& plugin : m_registry.plugins()) {
                 if (plugin) {
-                    plugin->setRxBlocked(false);
+                    // A network source owns the RF transmitter here.  Keep
+                    // decoding local modes, but do not feed local RX audio to
+                    // SVXLink: an M17/D-Star transmission could otherwise be
+                    // forwarded as FM while it waits for the network TX to end.
+                    plugin->setRxBlocked(plugin->mode() == Mode::FM);
                     plugin->setDetectionCounting(true);
                     plugin->detect(block);
                 }
@@ -96,16 +101,30 @@ void IQDispatcher::dispatch(const IQBlock& block)
         return;
     }
 
-    // Monitoring phase: fan the same block out to every plugin.
+    // Monitoring phase: fan the same block out to every plugin.  Detection is
+    // ordered by arbitration priority so a digital mode gets to claim the
+    // block before FM forwards it to the SVXLink audio bridge.  Without this,
+    // the first M17 LSF block was demodulated and sent to SVXLink as noise
+    // simply because FM happened to be registered first.
     std::vector<DetectionReport> reports;
     reports.reserve(m_registry.count());
 
-    for (const auto& plugin : m_registry.plugins()) {
+    auto plugins = m_registry.plugins();
+    std::stable_sort(plugins.begin(), plugins.end(),
+                     [](const auto& a, const auto& b) {
+                         return a->priority() > b->priority();
+                     });
+
+    bool digitalDetected = false;
+    for (const auto& plugin : plugins) {
         if (!plugin)
             continue;
-        plugin->setRxBlocked(false);
+        plugin->setRxBlocked(plugin->mode() == Mode::FM && digitalDetected);
         plugin->setDetectionCounting(true);
-        reports.push_back({plugin, plugin->detect(block)});
+        const Detection detection = plugin->detect(block);
+        if (detection.detected && plugin->mode() != Mode::FM)
+            digitalDetected = true;
+        reports.push_back({plugin, detection});
     }
 
     IModePlugin* owner = m_sessions.evaluateDetections(reports, m_tx);
