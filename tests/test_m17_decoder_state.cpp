@@ -106,6 +106,93 @@ int main()
             std::printf("baseline: FAIL (packets %d, dropped %d)\n", log.packets, log.dropped);
             ++failures;
         }
+        const LayerCountersSnapshot layers = decoder.layerCounters();
+        if (layers.syncDetected != 1 + s.frames.size() ||
+            layers.lsfOk != 1 || layers.lsfFail != 0 ||
+            layers.crcOk < 2 || layers.viterbiOk < 1 + s.frames.size() ||
+            layers.frameOk < 1 + s.frames.size()) {
+            std::printf("baseline layers: FAIL sync=%llu lsf=%llu/%llu crc=%llu/%llu "
+                        "viterbi=%llu/%llu frame=%llu/%llu\n",
+                        static_cast<unsigned long long>(layers.syncDetected),
+                        static_cast<unsigned long long>(layers.lsfOk),
+                        static_cast<unsigned long long>(layers.lsfFail),
+                        static_cast<unsigned long long>(layers.crcOk),
+                        static_cast<unsigned long long>(layers.crcFail),
+                        static_cast<unsigned long long>(layers.viterbiOk),
+                        static_cast<unsigned long long>(layers.viterbiFail),
+                        static_cast<unsigned long long>(layers.frameOk),
+                        static_cast<unsigned long long>(layers.frameFail));
+            ++failures;
+        }
+    }
+
+    {   // The LSF reaches Viterbi and produces the expected output length, but
+        // the payload CRC fails.  This is the layer boundary we need to see.
+        Log log;
+        Decoder decoder = makeDecoder(log);
+        const Sections s = sections(shortText);
+        decoder.decodeFrame(LSFSync, corrupt(s.lsf, 2));
+        const LayerCountersSnapshot layers = decoder.layerCounters();
+        const FrameAudit audit = decoder.lastFrameAudit();
+        if (layers.syncDetected != 1 || layers.lsfFail != 1 ||
+            layers.crcFail != 1 || layers.viterbiOk != 1 ||
+            layers.viterbiFail != 0 || layers.frameFail != 1 ||
+            audit.crcStatus != 0 || audit.lsfStatus != 0 ||
+            !audit.viterbiOk || audit.softbitStats.count != 2 * SymbolsPerPayload) {
+            std::printf("corrupt LSF layers: FAIL lsf=%llu/%llu crc=%llu/%llu "
+                        "viterbi=%llu/%llu frame=%llu/%llu\n",
+                        static_cast<unsigned long long>(layers.lsfOk),
+                        static_cast<unsigned long long>(layers.lsfFail),
+                        static_cast<unsigned long long>(layers.crcOk),
+                        static_cast<unsigned long long>(layers.crcFail),
+                        static_cast<unsigned long long>(layers.viterbiOk),
+                        static_cast<unsigned long long>(layers.viterbiFail),
+                        static_cast<unsigned long long>(layers.frameOk),
+                        static_cast<unsigned long long>(layers.frameFail));
+            ++failures;
+        }
+        decoder.resetLayerCounters();
+        if (decoder.layerCounters().syncDetected != 0 ||
+            decoder.layerCounters().crcFail != 0) {
+            std::printf("layer reset: FAIL\n");
+            ++failures;
+        }
+    }
+
+    {   // A clean stream frame exercises the four Golay LICH blocks.  All four
+        // must be observable even though they do not participate in LSF CRC.
+        Log log;
+        Decoder decoder = makeDecoder(log);
+        const LSF lsf = makeLSF("N1ADJ", "OK1LBC", 1, 2, 0);
+        std::vector<Symbol> symbols = appendPreamble({}, false);
+        const std::vector<Symbol> lsfSymbols = generateLSFSymbols(lsf);
+        symbols.insert(symbols.end(), lsfSymbols.begin(), lsfSymbols.end());
+        const std::vector<std::uint8_t> payload(16, 0x42);
+        const std::vector<Symbol> stream = generateStreamSymbols(lsf, 0, payload);
+        symbols.insert(symbols.end(), stream.begin(), stream.end());
+
+        auto slice = [&](std::size_t first) {
+            return calcSoftbits(std::vector<Symbol>(
+                symbols.begin() + static_cast<std::ptrdiff_t>(first),
+                symbols.begin() + static_cast<std::ptrdiff_t>(first + SymbolsPerPayload)));
+        };
+        const std::size_t lsfPayload = SymbolsPerFrame + SymbolsPerSyncword;
+        const std::size_t streamPayload = 2 * SymbolsPerFrame + SymbolsPerSyncword;
+        decoder.decodeFrame(LSFSync, slice(lsfPayload));
+        decoder.decodeFrame(StreamSync, slice(streamPayload));
+        const LayerCountersSnapshot layers = decoder.layerCounters();
+        if (layers.golayOk != 4 || layers.golayFail != 0 ||
+            layers.viterbiOk != 2 || layers.viterbiFail != 0 ||
+            layers.frameFail != 0) {
+            std::printf("stream layers: FAIL golay=%llu/%llu viterbi=%llu/%llu frame=%llu/%llu\n",
+                        static_cast<unsigned long long>(layers.golayOk),
+                        static_cast<unsigned long long>(layers.golayFail),
+                        static_cast<unsigned long long>(layers.viterbiOk),
+                        static_cast<unsigned long long>(layers.viterbiFail),
+                        static_cast<unsigned long long>(layers.frameOk),
+                        static_cast<unsigned long long>(layers.frameFail));
+            ++failures;
+        }
     }
 
     {   // A spurious end marker between the header and the frames must not

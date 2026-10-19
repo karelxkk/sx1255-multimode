@@ -75,6 +75,35 @@ _Žádná data._
       7.25       #####                                    27
 ```
 
+## Frame quality audit
+
+Offline nástroj `m17-frame-audit` zpracoval všech 16 capture a našel
+**404 sync burstů, všechny typu LSF**:
+
+- `Viterbi=OK`: **404/404** (výstup měl očekávanou délku),
+- `CRC=FAIL`: **404/404**,
+- `LSF=FAIL`: **404/404**,
+- medián Viterbi metric: **55**,
+- medián Softbit RMS: **0.848**,
+- medián SyncDistance: **4.356**,
+- medián RSSI při syncu: **−58.2 dBFS**.
+
+Medián RSSI je pod diagnostickým prahem a většina burstů vypadá jako
+false LSF ze šumu, nikoli jako potvrzené vysílání DM-1701. To je zásadní
+omezení historické datové sady.
+
+Referenční srovnání na nejsilnějším capture (`005543`) dalo:
+
+- softbit neshody: pouze **max. 1 LSB**, bez vlivu na Viterbi,
+- Viterbi výstup: **55/55 shodný** s Go m17-gateway,
+- Viterbi metric: **55/55 shodný**,
+- Golay se u LSF neuplatňuje,
+- CRC a LSF výsledek: **55/55 shodně FAIL**.
+
+První skutečně selhávající kontrola je tedy **CRC**, ale již na vstupu
+Viterbi jsou data poškozená; nová i původní implementace produkují stejný
+Viterbi výstup. Nejde o chybu implementace C++ dekodéru.
+
 ## Předběžné závěry
 
 - AFC C++ implementace byla porovnána s původním Go `FMDemodAFC`;

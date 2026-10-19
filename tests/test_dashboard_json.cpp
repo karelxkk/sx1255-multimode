@@ -18,7 +18,7 @@ using namespace sx1255;
 
 namespace {
 
-std::string httpGet(std::uint16_t port, const char* path)
+std::string httpRequest(std::uint16_t port, const char* method, const char* path)
 {
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0)
@@ -31,7 +31,8 @@ std::string httpGet(std::uint16_t port, const char* path)
         ::close(fd);
         return {};
     }
-    const std::string req = std::string("GET ") + path + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    const std::string req = std::string(method) + " " + path +
+        " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
     ::send(fd, req.data(), req.size(), 0);
     std::string out;
     char buf[4096];
@@ -42,6 +43,11 @@ std::string httpGet(std::uint16_t port, const char* path)
     }
     ::close(fd);
     return out;
+}
+
+std::string httpGet(std::uint16_t port, const char* path)
+{
+    return httpRequest(port, "GET", path);
 }
 
 }  // namespace
@@ -111,12 +117,27 @@ int main()
         return 15;
     if (plugins.find("\"average_symbol_level\"") == std::string::npos)
         return 16;
+    if (plugins.find("\"sync_detected\"") == std::string::npos ||
+        plugins.find("\"viterbi_fail\"") == std::string::npos ||
+        plugins.find("\"golay_fail\"") == std::string::npos) {
+        return 19;
+    }
 
     const std::string m17diag = httpGet(18081, "/api/m17/diagnostics");
     if (m17diag.find("\"candidates\"") == std::string::npos)
         return 17;
+    if (m17diag.find("\"frames\"") == std::string::npos ||
+        m17diag.find("\"softbit_stats\"") == std::string::npos) {
+        return 20;
+    }
     if (html.find("M17 Diagnostics") == std::string::npos)
         return 18;
+    if (html.find("Reset M17 statistik") == std::string::npos)
+        return 21;
+    const std::string reset = httpRequest(
+        18081, "POST", "/api/m17/diagnostics/reset");
+    if (reset.find("\"ok\":true") == std::string::npos)
+        return 22;
 
     const std::string status = httpGet(18081, "/api/status");
     if (status.find("\"state\":") == std::string::npos)

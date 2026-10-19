@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -27,7 +28,12 @@ int main()
     config.diagnostics.nearMissIntervalMs = 0;
     config.diagnostics.candidateLog = true;
     config.diagnostics.candidateLogFile = "/tmp/sx1255-m17-near-miss.log";
+    config.diagnostics.frameAuditLog = true;
+    config.diagnostics.frameAuditLogFile = "/tmp/sx1255-m17-frame-audit.log";
+    config.diagnostics.auditDirectory = "/tmp/sx1255-m17-audit";
     std::remove(config.diagnostics.candidateLogFile.c_str());
+    std::remove(config.diagnostics.frameAuditLogFile.c_str());
+    std::filesystem::remove_all(config.diagnostics.auditDirectory);
 
     const auto plugin = createM17Plugin(config, nullptr);
     std::atomic<int> captures{0};
@@ -73,6 +79,30 @@ int main()
         line.find("SyncDistance=") == std::string::npos) {
         return 4;
     }
+    std::ifstream frameLog(config.diagnostics.frameAuditLogFile);
+    const std::string frameLine((std::istreambuf_iterator<char>(frameLog)),
+                                std::istreambuf_iterator<char>());
+    if (frameLine.find("SoftbitRMS=") == std::string::npos ||
+        frameLine.find("ViterbiMetric=") == std::string::npos ||
+        frameLine.find("CRC=FAIL") == std::string::npos) {
+        return 5;
+    }
+    if (!std::filesystem::exists(
+            std::string(config.diagnostics.auditDirectory) + "/softbit_stats.json")) {
+        return 6;
+    }
+    bool artifact = false;
+    for (const auto& entry :
+         std::filesystem::directory_iterator(config.diagnostics.auditDirectory)) {
+        if (entry.path().extension() == ".json" &&
+            entry.path().filename().string().rfind("frame_", 0) == 0) {
+            artifact = true;
+        }
+    }
+    if (!artifact)
+        return 7;
     std::remove(config.diagnostics.candidateLogFile.c_str());
+    std::remove(config.diagnostics.frameAuditLogFile.c_str());
+    std::filesystem::remove_all(config.diagnostics.auditDirectory);
     return 0;
 }

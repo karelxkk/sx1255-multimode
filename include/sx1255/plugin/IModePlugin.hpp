@@ -122,6 +122,9 @@ public:
     // /api/m17/diagnostics.  Plugins without diagnostics return an empty
     // object.
     virtual std::string diagnosticsJson() const { return "{}"; }
+
+    // Reset diagnostic counters/history exposed through diagnosticsJson().
+    virtual void resetDiagnostics() {}
 };
 
 }  // namespace sx1255

@@ -3,9 +3,11 @@
 #include "sx1255/m17/M17Constants.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -41,6 +43,55 @@ struct LSF {
     std::string srcCallsign() const;
     std::uint8_t lsfType() const { return type[1] & 0x1; }
     std::uint8_t dataType() const { return (type[1] >> 1) & 0x3; }
+};
+
+struct SoftbitStats {
+    std::size_t count = 0;
+    std::uint16_t minimum = 0;
+    std::uint16_t maximum = 0;
+    double mean = 0.0;
+    double rms = 0.0;              // normalised around SoftMaybe
+    std::uint64_t saturated_low = 0;
+    std::uint64_t saturated_high = 0;
+    std::uint64_t near_centre = 0; // weak / under-driven decisions
+    std::array<std::uint64_t, 16> histogram{};
+};
+
+// Detailed observation of one decoded M17 sync burst.  The values are
+// diagnostic copies of the normal decode path; they do not feed back into it.
+struct FrameAudit {
+    std::uint16_t syncType = 0;
+    std::vector<SoftBit> rawSoftbits;
+    std::vector<SoftBit> deinterleavedSoftbits;
+    std::vector<std::uint8_t> viterbiOutput;
+    std::vector<std::uint8_t> lich;
+    SoftbitStats softbitStats;
+    int viterbiMetric = -1;
+    int channelErrors = -1;
+    bool viterbiAttempted = false;
+    bool viterbiOk = false;
+    int golayOk = 0;
+    int golayFail = 0;
+    // -1 = not applicable, 0 = fail, 1 = ok.
+    int crcStatus = -1;
+    int lsfStatus = -1;
+    int frameStatus = -1;
+    bool hasLsf = false;
+    LSF lsf{};
+};
+
+struct LayerCountersSnapshot {
+    std::uint64_t syncDetected = 0;
+    std::uint64_t lsfOk = 0;
+    std::uint64_t lsfFail = 0;
+    std::uint64_t crcOk = 0;
+    std::uint64_t crcFail = 0;
+    std::uint64_t golayOk = 0;
+    std::uint64_t golayFail = 0;
+    std::uint64_t viterbiOk = 0;
+    std::uint64_t viterbiFail = 0;
+    std::uint64_t frameOk = 0;
+    std::uint64_t frameFail = 0;
 };
 
 // Port of m17.NewLSF.
@@ -151,16 +202,32 @@ public:
     bool gotLSF() const { return m_gotLSF; }
     const LSF* currentLSF() const { return m_lsf ? &m_lsf.value() : nullptr; }
     Counters counters() const { return m_counters; }
+    LayerCountersSnapshot layerCounters() const;
+    FrameAudit lastFrameAudit() const;
+    void resetLayerCounters();
     std::uint16_t syncedType() const { return m_syncedType; }
     // Forget the retained packet LSF; the plugin calls this when the channel
     // has been quiet, so a stale header cannot be attached to a later frame.
     void expireRetention();
 
 private:
-    std::pair<LSF, int> decodeLSF(const std::vector<SoftBit>& softBits);
-    struct StreamFrame { std::vector<std::uint8_t> frameData; std::vector<std::uint8_t> lich; std::uint16_t fn; std::uint8_t lichCnt; int e; };
-    StreamFrame decodeStreamFrame(const std::vector<SoftBit>& softBits);
-    std::pair<std::vector<std::uint8_t>, int> decodePacketFrame(const std::vector<SoftBit>& softBits);
+    LSF decodeLSF(const std::vector<SoftBit>& softBits, FrameAudit& audit);
+    struct StreamFrame {
+        std::vector<std::uint8_t> frameData;
+        std::vector<std::uint8_t> lich;
+        std::uint16_t fn;
+        std::uint8_t lichCnt;
+        int e;
+        int viterbiMetric = -1;
+        bool viterbiOk = false;
+        int golayOk = 0;
+        int golayFail = 0;
+        std::vector<SoftBit> deinterleavedSoftbits;
+        std::vector<std::uint8_t> viterbiOutput;
+    };
+    StreamFrame decodeStreamFrame(const std::vector<SoftBit>& softBits, FrameAudit& audit);
+    std::pair<std::vector<std::uint8_t>, int> decodePacketFrame(
+        const std::vector<SoftBit>& softBits, FrameAudit& audit);
     int channelBitErrors(const std::vector<std::uint8_t>& data, const PuncturePattern& pp,
                          std::uint8_t finalBit, const std::vector<SoftBit>& received);
     void lichLSF(const LSF& lsf, int e);
@@ -175,8 +242,10 @@ private:
     // one message instead of each attempt being thrown away on its own.
     void startPacketAssembly(const LSF& lsf);
     void clearPacketAssembly();
-    void handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int errors, bool lastFrame);
-    bool completePacket(std::vector<std::uint8_t>& payload);
+    void handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int errors,
+                           bool lastFrame, FrameAudit& audit);
+    bool completePacket(std::vector<std::uint8_t>& payload, FrameAudit* audit = nullptr);
+    void publishAudit(const FrameAudit& audit);
 
     Callbacks m_cb;
     std::uint16_t m_syncedType = 0;
@@ -210,6 +279,20 @@ private:
     bool m_haveLastDelivered = false;
     int m_framesSinceDelivery = 0;
     Counters m_counters{};
+
+    mutable std::mutex m_auditMutex;
+    FrameAudit m_lastAudit;
+    std::atomic<std::uint64_t> m_syncDetected{0};
+    std::atomic<std::uint64_t> m_lsfOk{0};
+    std::atomic<std::uint64_t> m_lsfFail{0};
+    std::atomic<std::uint64_t> m_crcOk{0};
+    std::atomic<std::uint64_t> m_crcFail{0};
+    std::atomic<std::uint64_t> m_golayOk{0};
+    std::atomic<std::uint64_t> m_golayFail{0};
+    std::atomic<std::uint64_t> m_viterbiOk{0};
+    std::atomic<std::uint64_t> m_viterbiFail{0};
+    std::atomic<std::uint64_t> m_frameOk{0};
+    std::atomic<std::uint64_t> m_frameFail{0};
 
     static constexpr int kLsfRetentionFrames = 64;
     static constexpr int kDuplicateFrames = 200;

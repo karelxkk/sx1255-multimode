@@ -33,6 +33,8 @@ const std::string& dashboardHtml()
   .diag-table th { color:#8b949e; font-weight:600; position:sticky; top:0; background:#161b22; }
   .diag-wrap { max-height:320px; overflow:auto; border:1px solid #21262d; border-radius:6px; }
   .ok { color:#3fb950; } .bad { color:#f85149; }
+  button { background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:5px 10px; cursor:pointer; }
+  button:hover { border-color:#58a6ff; }
 </style>
 </head>
 <body>
@@ -72,7 +74,15 @@ const std::string& dashboardHtml()
       <div class="cell"><b id="m17-hits">-</b><span>sync hits / misses</span></div>
       <div class="cell"><b id="m17-level">-</b><span>average symbol level</span></div>
       <div class="cell"><b id="m17-rssi">-</b><span>RSSI at sync [dBFS]</span></div>
+      <div class="cell"><b id="m17-sync-detected">-</b><span>sync detected</span></div>
+      <div class="cell"><b id="m17-lsf">-</b><span>LSF ok / fail</span></div>
+      <div class="cell"><b id="m17-crc">-</b><span>CRC ok / fail</span></div>
+      <div class="cell"><b id="m17-golay">-</b><span>Golay ok / fail</span></div>
+      <div class="cell"><b id="m17-viterbi">-</b><span>Viterbi ok / fail</span></div>
+      <div class="cell"><b id="m17-frame">-</b><span>frame ok / fail</span></div>
     </div>
+    <div style="height:8px"></div>
+    <button id="m17-reset" type="button">Reset M17 statistik</button>
     <div style="height:8px"></div>
     <div class="diag-wrap">
       <table class="diag-table">
@@ -231,6 +241,12 @@ async function refreshM17Diagnostics(){
   $('m17-hits').textContent = String(d.sync_hits || 0) + ' / ' + String(d.sync_misses || 0);
   $('m17-level').textContent = fixed(d.average_symbol_level, 2);
   $('m17-rssi').textContent = fixed(d.rssi_at_sync, 1);
+  $('m17-sync-detected').textContent = String(d.sync_detected || 0);
+  $('m17-lsf').textContent = String(d.lsf_ok || 0) + ' / ' + String(d.lsf_fail || 0);
+  $('m17-crc').textContent = String(d.crc_ok || 0) + ' / ' + String(d.crc_fail || 0);
+  $('m17-golay').textContent = String(d.golay_ok || 0) + ' / ' + String(d.golay_fail || 0);
+  $('m17-viterbi').textContent = String(d.viterbi_ok || 0) + ' / ' + String(d.viterbi_fail || 0);
+  $('m17-frame').textContent = String(d.frame_ok || 0) + ' / ' + String(d.frame_fail || 0);
   const body = $('m17-candidates');
   body.innerHTML = '';
   const rows = (d.candidates || []).slice().reverse();
@@ -250,6 +266,10 @@ async function refreshM17Diagnostics(){
     body.appendChild(tr);
   }
 }
+$('m17-reset').addEventListener('click', async function(){
+  await fetch('/api/m17/diagnostics/reset', {method:'POST', cache:'no-store'});
+  refreshM17Diagnostics();
+});
 drawSpectrum(); drawWaterfall(); refreshStatus(); refreshPlugins(); refreshIq(); refreshM17Diagnostics();
 setInterval(drawSpectrum, 200);
 setInterval(drawWaterfall, 2000);

@@ -6,6 +6,17 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Přidáno
 
+- M17 frame decoder telemetrie po vrstvách: `sync_detected`, LSF, CRC,
+  Golay, Viterbi a frame ok/fail, včetně reset API.
+- Rotovaný `m17_frame_audit.log` s RSSI, AFC, SyncDistance, Softbit RMS,
+  Viterbi metricem a Golay/CRC/LSF výsledkem pro každý sync.
+- Softbit histogram a artefakty neúspěšných rámců (`softbit_stats.json`,
+  raw softbity, deinterleaved bity, Viterbi výstup) + IQ capture při
+  SyncDistance < 4.0 a CRC fail.
+- Offline `m17-frame-audit` a `dm1701_audit.json`.
+- Referenční srovnání frame mezivýsledků proti původnímu Go m17-gateway
+  (`docs/M17_REFERENCE_COMPARISON.md`).
+
 - M17 diagnostics: `/api/plugins` a `/api/m17/diagnostics` nyní zobrazují
   AFC korekci, SyncDistance, sílu symbolů, RSSI při syncu a historii
   posledních 100 kandidátů. Dashboard má samostatný panel M17 Diagnostics.

@@ -136,6 +136,13 @@ struct M17Config {
         std::string candidateLogFile = "/var/lib/sx1255-multimode/m17_candidates.log";
         std::size_t candidateLogMaxBytes = 1024 * 1024;
         int         candidateLogBackups = 3;
+        // Per-sync deep decode audit (softbits, Viterbi, Golay, CRC, LSF).
+        bool        frameAuditLog = false;
+        std::string frameAuditLogFile = "/var/lib/sx1255-multimode/m17_frame_audit.log";
+        std::size_t frameAuditLogMaxBytes = 1024 * 1024;
+        int         frameAuditLogBackups = 3;
+        // Failed-frame artifacts and softbit_stats.json.
+        std::string auditDirectory = "/var/lib/sx1255-multimode/m17_audit";
         // A rejected search step is a near miss when its best sync distance is
         // in this interval and the carrier is above the RSSI threshold.
         double      nearMissMinDistance = 4.5;

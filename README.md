@@ -126,6 +126,7 @@ sx1255-soak        soak test (24h/48h/7d, soak_report.json)
 sx1255-bench       výkonnostní profil (FFT, waterfall, RX chain)
 m17_rx_dump        offline rozbor sync burstů v IQ souboru
 m17_iq_audit       offline M17 telemetrie a kandidáti do JSON
+m17-frame-audit    per-frame audit softbitů, Viterbi, Golay, CRC a LSF
 m17_afc_audit      AFC trace pro srovnání s původním m17-gateway
 ```
 
@@ -173,6 +174,8 @@ docs/                    architektura, plugin API, UML diagramy
 - [M17 bridge: zprávy a poloha](docs/M17_BRIDGE.md)
 - [M17 porting report](docs/M17_PORTING_REPORT.md)
 - [M17 / DM-1701 AFC a SyncDistance analýza](docs/M17_DM1701_ANALYSIS.md)
+- [M17 frame quality audit](docs/M17_FRAME_AUDIT.md)
+- [M17 reference comparison](docs/M17_REFERENCE_COMPARISON.md)
 - [SX1255 hardware frontend](docs/SX1255_HARDWARE.md)
 - [Validace multimódové arbitráže](docs/MULTIMODE_VALIDATION.md)
 - [IQ capture & replay](docs/IQ_CAPTURE.md)

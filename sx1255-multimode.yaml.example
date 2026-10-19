@@ -146,6 +146,14 @@ modes:
       candidate_log_file: /var/lib/sx1255-multimode/m17_candidates.log
       candidate_log_max_bytes: 1048576
       candidate_log_backups: 3
+      # Podrobný audit každého syncu: softbit RMS, Viterbi metric, Golay,
+      # CRC a LSF výsledek. Rotace 1 MB / 3 zálohy.
+      frame_audit_log: false
+      frame_audit_log_file: /var/lib/sx1255-multimode/m17_frame_audit.log
+      frame_audit_log_max_bytes: 1048576
+      frame_audit_log_backups: 3
+      # Sem se ukládají softbit_stats.json a artefakty rámců s CRC fail.
+      audit_directory: /var/lib/sx1255-multimode/m17_audit
       near_miss_min_distance: 4.5
       near_miss_max_distance: 7.0
       near_miss_rssi_dbfs: -55.0

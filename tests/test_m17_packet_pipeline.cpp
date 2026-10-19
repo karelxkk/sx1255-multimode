@@ -190,7 +190,11 @@ int main()
     const PluginTelemetry telemetry = plugin->telemetry();
     for (const char* key : {"afc_correction_hz", "sync_distance", "sync_confidence",
                             "frame_count", "sync_hits", "sync_misses",
-                            "average_symbol_level", "rssi_at_sync"}) {
+                            "average_symbol_level", "rssi_at_sync",
+                            "sync_detected", "lsf_ok", "lsf_fail",
+                            "crc_ok", "crc_fail", "golay_ok", "golay_fail",
+                            "viterbi_ok", "viterbi_fail",
+                            "frame_ok", "frame_fail"}) {
         if (telemetry.metrics.find(key) == telemetry.metrics.end()) {
             std::printf("packet pipeline: FAIL telemetry key %s is missing\n", key);
             return 1;

@@ -339,6 +339,21 @@ Config loadConfig(const std::string& path)
         config.m17.diagnostics.candidateLogBackups = static_cast<int>(
             optInt(*diagnostics, "candidate_log_backups",
                    config.m17.diagnostics.candidateLogBackups));
+        config.m17.diagnostics.frameAuditLog =
+            optBool(*diagnostics, "frame_audit_log", config.m17.diagnostics.frameAuditLog);
+        config.m17.diagnostics.frameAuditLogFile =
+            optString(*diagnostics, "frame_audit_log_file",
+                      config.m17.diagnostics.frameAuditLogFile);
+        config.m17.diagnostics.frameAuditLogMaxBytes = static_cast<std::size_t>(
+            optInt(*diagnostics, "frame_audit_log_max_bytes",
+                   static_cast<long long>(
+                       config.m17.diagnostics.frameAuditLogMaxBytes)));
+        config.m17.diagnostics.frameAuditLogBackups = static_cast<int>(
+            optInt(*diagnostics, "frame_audit_log_backups",
+                   config.m17.diagnostics.frameAuditLogBackups));
+        config.m17.diagnostics.auditDirectory =
+            optString(*diagnostics, "audit_directory",
+                      config.m17.diagnostics.auditDirectory);
         config.m17.diagnostics.nearMissMinDistance =
             optDouble(*diagnostics, "near_miss_min_distance",
                       config.m17.diagnostics.nearMissMinDistance);
@@ -508,6 +523,16 @@ std::string serializeConfig(const Config& config)
         << config.m17.diagnostics.candidateLogMaxBytes << '\n';
     out << "      candidate_log_backups: "
         << config.m17.diagnostics.candidateLogBackups << '\n';
+    out << "      frame_audit_log: "
+        << (config.m17.diagnostics.frameAuditLog ? "true" : "false") << '\n';
+    out << "      frame_audit_log_file: "
+        << config.m17.diagnostics.frameAuditLogFile << '\n';
+    out << "      frame_audit_log_max_bytes: "
+        << config.m17.diagnostics.frameAuditLogMaxBytes << '\n';
+    out << "      frame_audit_log_backups: "
+        << config.m17.diagnostics.frameAuditLogBackups << '\n';
+    out << "      audit_directory: "
+        << config.m17.diagnostics.auditDirectory << '\n';
     out << "      near_miss_min_distance: "
         << formatDouble(config.m17.diagnostics.nearMissMinDistance) << '\n';
     out << "      near_miss_max_distance: "

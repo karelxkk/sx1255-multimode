@@ -138,6 +138,7 @@ void M17Synchronizer::extractPayload(float dist, std::uint16_t typ)
     std::vector<Symbol> pld(SymbolsPerPayload);
     for (std::size_t i = 0; i < SymbolsPerPayload; ++i)
         pld[i] = m_symbols[i * static_cast<std::size_t>(m_sps)];
+    m_lastPayloadSymbols = pld;
 
     const std::vector<SoftBit> softBits = calcSoftbits(pld);
 

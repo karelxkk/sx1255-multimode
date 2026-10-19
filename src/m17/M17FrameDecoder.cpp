@@ -151,6 +151,39 @@ bool plausibleCallsign(const std::string& cs)
     return letter;
 }
 
+SoftbitStats summarizeSoftbits(const std::vector<SoftBit>& values)
+{
+    SoftbitStats stats;
+    stats.count = values.size();
+    if (values.empty())
+        return stats;
+
+    stats.minimum = 0xFFFF;
+    double sum = 0.0;
+    double sumSq = 0.0;
+    for (const SoftBit value : values) {
+        stats.minimum = std::min(stats.minimum, value);
+        stats.maximum = std::max(stats.maximum, value);
+        sum += value;
+        const double normalised =
+            (static_cast<double>(value) - SoftMaybe) / static_cast<double>(SoftMaybe);
+        sumSq += normalised * normalised;
+        if (value == SoftFalse)
+            ++stats.saturated_low;
+        if (value == SoftTrue)
+            ++stats.saturated_high;
+        if (value >= SoftTrue / 4 && value <= (SoftTrue * 3) / 4)
+            ++stats.near_centre;
+        const std::size_t bin = std::min<std::size_t>(
+            static_cast<std::size_t>(value) * stats.histogram.size() / 65536,
+            stats.histogram.size() - 1);
+        ++stats.histogram[bin];
+    }
+    stats.mean = sum / static_cast<double>(values.size());
+    stats.rms = std::sqrt(sumSq / static_cast<double>(values.size()));
+    return stats;
+}
+
 }  // namespace
 
 std::uint16_t crc16(const std::uint8_t* data, std::size_t len)
@@ -548,9 +581,18 @@ std::uint16_t golaySoftDecode24(const std::array<SoftBit, 24>& codeword)
     return static_cast<std::uint16_t>((correctedWord >> 12) & 0x0FFF);
 }
 
-std::array<std::uint8_t, 6> decodeLICH(const std::vector<SoftBit>& inp, std::size_t offset)
+namespace {
+
+struct GolayLichResult {
+    std::array<std::uint8_t, 6> data{};
+    int ok = 0;
+    int fail = 0;
+};
+
+GolayLichResult decodeLICHDiagnostic(const std::vector<SoftBit>& inp, std::size_t offset)
 {
-    std::array<std::uint8_t, 6> outp{};
+    GolayLichResult result;
+    auto& outp = result.data;
 
     for (int block = 0; block < 4; ++block) {
         std::array<SoftBit, 24> blockData{};
@@ -559,11 +601,14 @@ std::array<std::uint8_t, 6> decodeLICH(const std::vector<SoftBit>& inp, std::siz
 
         std::uint16_t tmp = golaySoftDecode24(blockData);
         if (tmp == 0xFFFF) {
+            ++result.fail;
             std::uint16_t hardBits = 0;
             for (int i = 0; i < 24; ++i)
                 if (blockData[static_cast<std::size_t>(23 - i)] > 0x7FFF)
                     hardBits |= static_cast<std::uint16_t>(1u << i);
             tmp = static_cast<std::uint16_t>((hardBits >> 12) & 0x0FFF);
+        } else {
+            ++result.ok;
         }
 
         switch (block) {
@@ -585,7 +630,14 @@ std::array<std::uint8_t, 6> decodeLICH(const std::vector<SoftBit>& inp, std::siz
                 break;
         }
     }
-    return outp;
+    return result;
+}
+
+}  // namespace
+
+std::array<std::uint8_t, 6> decodeLICH(const std::vector<SoftBit>& inp, std::size_t offset)
+{
+    return decodeLICHDiagnostic(inp, offset).data;
 }
 
 std::array<std::uint8_t, 12> encodeLICH(const std::array<std::uint8_t, 6>& inp)
@@ -747,38 +799,122 @@ std::pair<std::vector<std::uint8_t>, int> ViterbiDecoder::decodePunctured(
 
 Decoder::Decoder(Callbacks callbacks) : m_cb(std::move(callbacks)) {}
 
-std::pair<LSF, int> Decoder::decodeLSF(const std::vector<SoftBit>& softBits)
+void Decoder::publishAudit(const FrameAudit& audit)
+{
+    if (audit.lsfStatus == 1)
+        ++m_lsfOk;
+    else if (audit.lsfStatus == 0)
+        ++m_lsfFail;
+    if (audit.crcStatus == 1)
+        ++m_crcOk;
+    else if (audit.crcStatus == 0)
+        ++m_crcFail;
+    if (audit.viterbiAttempted) {
+        if (audit.viterbiOk)
+            ++m_viterbiOk;
+        else
+            ++m_viterbiFail;
+    }
+    m_golayOk += static_cast<std::uint64_t>(std::max(audit.golayOk, 0));
+    m_golayFail += static_cast<std::uint64_t>(std::max(audit.golayFail, 0));
+    if (audit.frameStatus == 1)
+        ++m_frameOk;
+    else if (audit.frameStatus == 0)
+        ++m_frameFail;
+
+    std::lock_guard<std::mutex> lock(m_auditMutex);
+    m_lastAudit = audit;
+}
+
+LayerCountersSnapshot Decoder::layerCounters() const
+{
+    LayerCountersSnapshot snapshot;
+    snapshot.syncDetected = m_syncDetected.load();
+    snapshot.lsfOk = m_lsfOk.load();
+    snapshot.lsfFail = m_lsfFail.load();
+    snapshot.crcOk = m_crcOk.load();
+    snapshot.crcFail = m_crcFail.load();
+    snapshot.golayOk = m_golayOk.load();
+    snapshot.golayFail = m_golayFail.load();
+    snapshot.viterbiOk = m_viterbiOk.load();
+    snapshot.viterbiFail = m_viterbiFail.load();
+    snapshot.frameOk = m_frameOk.load();
+    snapshot.frameFail = m_frameFail.load();
+    return snapshot;
+}
+
+FrameAudit Decoder::lastFrameAudit() const
+{
+    std::lock_guard<std::mutex> lock(m_auditMutex);
+    return m_lastAudit;
+}
+
+void Decoder::resetLayerCounters()
+{
+    m_syncDetected = 0;
+    m_lsfOk = 0;
+    m_lsfFail = 0;
+    m_crcOk = 0;
+    m_crcFail = 0;
+    m_golayOk = 0;
+    m_golayFail = 0;
+    m_viterbiOk = 0;
+    m_viterbiFail = 0;
+    m_frameOk = 0;
+    m_frameFail = 0;
+}
+
+LSF Decoder::decodeLSF(const std::vector<SoftBit>& softBits, FrameAudit& audit)
 {
     std::vector<SoftBit> bits = softBits;
     derandomizeSoftBits(bits);
     const std::vector<SoftBit> dSoftBit = deinterleaveSoftBits(bits);
+    audit.deinterleavedSoftbits = dSoftBit;
 
     ViterbiDecoder vd;
     auto [lsfBytes, cost] = vd.decodePunctured(dSoftBit,
                                                std::vector<bool>(LSFPuncturePattern.begin(), LSFPuncturePattern.end()));
-    (void)cost;
+    audit.viterbiAttempted = true;
+    audit.viterbiMetric = cost;
+    audit.viterbiOutput = lsfBytes;
+    audit.viterbiOk = lsfBytes.size() >= LSFLen + 1;
 
     std::vector<std::uint8_t> lsf(lsfBytes.begin() + 1, lsfBytes.begin() + 1 + LSFLen);
     const int e = channelBitErrors(lsf,
                                    std::vector<bool>(LSFPuncturePattern.begin(), LSFPuncturePattern.end()),
                                    LSFFinalBit, dSoftBit);
-    return {LSF::newFromBytes(lsf.data()), e};
+    audit.channelErrors = e;
+    audit.lsfStatus = -1;
+    audit.hasLsf = true;
+    audit.lsf = LSF::newFromBytes(lsf.data());
+    audit.lsfStatus = audit.lsf.checkCRC() ? 1 : 0;
+    audit.crcStatus = audit.lsfStatus;
+    return audit.lsf;
 }
 
-Decoder::StreamFrame Decoder::decodeStreamFrame(const std::vector<SoftBit>& softBits)
+Decoder::StreamFrame Decoder::decodeStreamFrame(const std::vector<SoftBit>& softBits,
+                                                FrameAudit& audit)
 {
     std::vector<SoftBit> bits = softBits;
     derandomizeSoftBits(bits);
     const std::vector<SoftBit> dSoftBit = deinterleaveSoftBits(bits);
+    audit.deinterleavedSoftbits = dSoftBit;
 
-    const std::array<std::uint8_t, 6> lich = decodeLICH(dSoftBit, 0);
+    const GolayLichResult golay = decodeLICHDiagnostic(dSoftBit, 0);
+    const std::array<std::uint8_t, 6>& lich = golay.data;
     const std::uint8_t lichCnt = lich[5] >> 5;
 
     ViterbiDecoder vd;
     const std::vector<SoftBit> frameBits(dSoftBit.begin() + 96, dSoftBit.end());
     auto [frameData, cost] = vd.decodePunctured(frameBits,
                                                 std::vector<bool>(StreamPuncturePattern.begin(), StreamPuncturePattern.end()));
-    (void)cost;
+    audit.viterbiAttempted = true;
+    audit.viterbiMetric = cost;
+    audit.viterbiOutput = frameData;
+    audit.viterbiOk = frameData.size() >= 1 + 2 + 16;
+    audit.golayOk = golay.ok;
+    audit.golayFail = golay.fail;
+    audit.lich.assign(lich.begin(), lich.end());
 
     const int e = channelBitErrors(
         std::vector<std::uint8_t>(frameData.begin() + 1, frameData.begin() + 1 + 2 + 16),
@@ -789,19 +925,36 @@ Decoder::StreamFrame Decoder::decodeStreamFrame(const std::vector<SoftBit>& soft
         (static_cast<std::uint16_t>(frameData[1]) << 8) | frameData[2]);
     std::vector<std::uint8_t> payload(frameData.begin() + 3, frameData.end());
 
-    return {payload, std::vector<std::uint8_t>(lich.begin(), lich.end()), fn, lichCnt, e};
+    StreamFrame result;
+    result.frameData = payload;
+    result.lich.assign(lich.begin(), lich.end());
+    result.fn = fn;
+    result.lichCnt = lichCnt;
+    result.e = e;
+    result.viterbiMetric = cost;
+    result.viterbiOk = audit.viterbiOk;
+    result.golayOk = golay.ok;
+    result.golayFail = golay.fail;
+    result.deinterleavedSoftbits = dSoftBit;
+    result.viterbiOutput = frameData;
+    return result;
 }
 
-std::pair<std::vector<std::uint8_t>, int> Decoder::decodePacketFrame(const std::vector<SoftBit>& softBits)
+std::pair<std::vector<std::uint8_t>, int> Decoder::decodePacketFrame(
+    const std::vector<SoftBit>& softBits, FrameAudit& audit)
 {
     std::vector<SoftBit> bits = softBits;
     derandomizeSoftBits(bits);
     const std::vector<SoftBit> dSoftBit = deinterleaveSoftBits(bits);
+    audit.deinterleavedSoftbits = dSoftBit;
 
     ViterbiDecoder vd;
     auto [pkt, cost] = vd.decodePunctured(dSoftBit,
                                           std::vector<bool>(PacketPuncturePattern.begin(), PacketPuncturePattern.end()));
-    (void)cost;
+    audit.viterbiAttempted = true;
+    audit.viterbiMetric = cost;
+    audit.viterbiOutput = pkt;
+    audit.viterbiOk = pkt.size() >= 1 + 26;
 
     const int e = channelBitErrors(std::vector<std::uint8_t>(pkt.begin() + 1, pkt.begin() + 1 + 26),
                                    std::vector<bool>(PacketPuncturePattern.begin(), PacketPuncturePattern.end()),
@@ -846,6 +999,17 @@ void Decoder::lichLSF(const LSF& lsf, int e)
 
 void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBits)
 {
+    ++m_syncDetected;
+    FrameAudit audit;
+    audit.syncType = typ;
+    audit.rawSoftbits = softBits;
+    audit.softbitStats = summarizeSoftbits(softBits);
+    struct AuditGuard {
+        Decoder* decoder;
+        FrameAudit* audit;
+        ~AuditGuard() { decoder->publishAudit(*audit); }
+    } auditGuard{this, &audit};
+
     // Any burst counts as activity for the LSF retention below.
     if (m_lastPacketLsfAge < kLsfRetentionFrames + 1)
         ++m_lastPacketLsfAge;
@@ -855,9 +1019,11 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
         // ignored because the decoder still believes it is inside an earlier
         // stream or packet: a carrier that dropped without an EOT used to
         // swallow every following transmission, packets included.
-        auto [lsf, e] = decodeLSF(softBits);
+        const LSF lsf = decodeLSF(softBits, audit);
+        const int e = audit.channelErrors;
         if (!lsf.checkCRC() || !plausibleCallsign(lsf.srcCallsign()) ||
             !plausibleCallsign(lsf.dstCallsign())) {
+            audit.frameStatus = 0;
             m_counters.lsfBadCRC++;
             if (m_cb.onLSFBadCRC)
                 m_cb.onLSFBadCRC(lsf, static_cast<double>(e) / 3.68);
@@ -874,6 +1040,8 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
         }
 
         m_lsf = lsf;
+        audit.hasLsf = true;
+        audit.frameStatus = 1;
         m_gotLSF = true;
         m_timeoutCnt = 0;
         m_lastStreamFN = 0xffff;
@@ -925,18 +1093,25 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
                     m_cb.onPacketReattached(*m_lsf);
             } else {
                 // No header at all: the frame cannot be routed anywhere.
+                audit.frameStatus = 0;
                 dropFrame(typ, "packet frame without a valid LSF");
                 return;
             }
         }
-        auto [pktFrame, e] = decodePacketFrame(softBits);
+        auto [pktFrame, e] = decodePacketFrame(softBits, audit);
         m_errors += e;
         m_bits += 368;
         ++m_framesSinceDelivery;
         ++m_counters.packetFrames;
 
         const bool lastFrame = (pktFrame[25] >> 7) != 0;
-        handlePacketFrame(pktFrame, e, lastFrame);
+        handlePacketFrame(pktFrame, e, lastFrame, audit);
+        if (!audit.viterbiOk)
+            audit.frameStatus = 0;
+        else if (audit.crcStatus >= 0)
+            audit.frameStatus = audit.crcStatus;
+        else if (audit.frameStatus < 0)
+            audit.frameStatus = 1;
         return;
     }
 
@@ -945,10 +1120,11 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
             // A stream frame in the middle of a packet transmission cannot be
             // used (no stream LSF is behind it) and must not disturb the
             // packet that is being reassembled.
+            audit.frameStatus = 0;
             dropFrame(typ, "stream frame while a packet is open");
             return;
         }
-        const StreamFrame f = decodeStreamFrame(softBits);
+        const StreamFrame f = decodeStreamFrame(softBits, audit);
         const std::uint16_t fn7 = f.fn & 0x7fff;
         bool dropRepeat = fn7 == m_lastStreamFN;
 
@@ -962,13 +1138,21 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
                 if (m_lichParts == 0x3F) {
                     m_lichParts = 0;
                     const LSF lsfB = LSF::newFromBytes(m_lsfBytes.data());
-                    if (lsfB.checkCRC())
+                    if (lsfB.checkCRC()) {
+                        audit.crcStatus = 1;
+                        audit.lsfStatus = 1;
                         lichLSF(lsfB, f.e);
+                    } else {
+                        audit.crcStatus = 0;
+                        audit.lsfStatus = 0;
+                    }
                 }
             }
 
             const bool lastFrame = (f.fn & 0x8000) == 0x8000 && fn7 == ((m_lastStreamFN + 1) & 0x7fff);
             if (m_gotLSF) {
+                if (audit.frameStatus < 0)
+                    audit.frameStatus = f.viterbiOk ? 1 : 0;
                 m_streamFN = f.fn;
                 if (m_cb.onStream)
                     m_cb.onStream(*m_lsf, f.frameData, m_streamID, m_streamFN,
@@ -978,6 +1162,7 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
                     m_cb.onStreamEOT(*m_lsf, m_streamID, m_streamFN,
                                      static_cast<double>(m_errors) / m_bits * 100.0);
             } else {
+                audit.frameStatus = 0;
                 dropFrame(typ, "stream frame without a valid LSF");
             }
             if (lastFrame)
@@ -1065,7 +1250,8 @@ void Decoder::clearPacketAssembly()
 // same message from another attempt land on the same frame number, so a radio
 // that repeats a packet three times gives three chances per frame instead of
 // the message being lost with the first attempt that has a bad frame.
-void Decoder::handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int errors, bool lastFrame)
+void Decoder::handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int errors,
+                                bool lastFrame, FrameAudit& audit)
 {
     std::uint8_t field = static_cast<std::uint8_t>((pktFrame[25] >> 2) & 0x1F);
     if (m_cb.onPacketFrame)
@@ -1073,6 +1259,7 @@ void Decoder::handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int e
 
     if (!lastFrame) {
         if (field > 32) {
+            audit.frameStatus = 0;
             dropFrame(PacketSync, "packet frame number out of range");
             return;
         }
@@ -1102,7 +1289,7 @@ void Decoder::handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int e
     // Always try to complete: a later attempt may have filled the frames that
     // were missing, even when this final chunk is not a better copy.
     std::vector<std::uint8_t> payload;
-    if (!completePacket(payload)) {
+    if (!completePacket(payload, &audit)) {
         // Nothing is thrown away: the frames stay for the next attempt, which
         // will fill the holes with better copies.
         if (m_cb.onPacketBadCRC)
@@ -1136,7 +1323,7 @@ void Decoder::handlePacketFrame(const std::vector<std::uint8_t>& pktFrame, int e
 // frames must be present from number 0 without holes and the final chunk
 // follows them.  The payload CRC decides which length is the right one, so a
 // damaged frame number cannot steer the assembly into a bogus layout.
-bool Decoder::completePacket(std::vector<std::uint8_t>& payload)
+bool Decoder::completePacket(std::vector<std::uint8_t>& payload, FrameAudit* audit)
 {
     payload.clear();
     if (m_lastChunkErrors < 0)
@@ -1156,12 +1343,17 @@ bool Decoder::completePacket(std::vector<std::uint8_t>& payload)
         candidate.insert(candidate.end(), m_lastChunk.begin(),
                          m_lastChunk.begin() + static_cast<std::ptrdiff_t>(m_lastChunkLen));
         payload = std::move(candidate);
-        if (crc16(payload.data(), payload.size()) == 0)
+        if (crc16(payload.data(), payload.size()) == 0) {
+            if (audit)
+                audit->crcStatus = 1;
             return true;
+        }
     }
     // Nothing matched the CRC: the frames stay for the next attempt and the
     // caller reports the longest candidate that was tried.
     ++m_counters.packetsBadCRC;
+    if (audit)
+        audit->crcStatus = 0;
     return false;
 }
 

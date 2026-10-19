@@ -85,6 +85,9 @@ target_link_libraries(m17_afc_audit PRIVATE sx1255_core)
 
 add_executable(m17_iq_audit tools/m17_iq_audit.cpp)
 target_link_libraries(m17_iq_audit PRIVATE sx1255_core)
+
+add_executable(m17-frame-audit tools/m17_frame_audit.cpp)
+target_link_libraries(m17-frame-audit PRIVATE sx1255_core)
 add_subdirectory(tests)
 
 # ---------------------------------------------------------------------------
@@ -93,7 +96,7 @@ add_subdirectory(tests)
 include(GNUInstallDirs)
 
 install(TARGETS sx1255-multimode sx1255-soak sx1255-bench sx1255-fp-audit
-                m17_rx_dump m17_iq_audit
+                m17_rx_dump m17_iq_audit m17-frame-audit
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES sx1255-multimode.yaml.example

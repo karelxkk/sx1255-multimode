@@ -24,7 +24,7 @@ struct IQStatusSnapshot {
 
 // Minimal dependency-free HTTP server exposing the diagnostic API and the
 // web dashboard: GET /, /api/status, /api/plugins, /api/m17/diagnostics,
-// /api/iq, /api/spectrum, /api/waterfall.
+// POST /api/m17/diagnostics/reset, /api/iq, /api/spectrum, /api/waterfall.
 class HttpStatusServer {
 public:
     HttpStatusServer(std::uint16_t port,
@@ -50,6 +50,7 @@ private:
     std::string handleStatus();
     std::string handlePlugins() const;
     std::string handleM17Diagnostics() const;
+    std::string handleM17DiagnosticsReset();
     std::string handleIq() const;
     std::string handleSpectrum() const;
     std::string handleWaterfall(std::uint64_t sinceSeq) const;

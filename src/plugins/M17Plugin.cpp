@@ -61,6 +61,31 @@ class M17Plugin final : public IModePlugin {
         std::string syncType;
         std::string result;
     };
+    struct FrameAuditEntry {
+        std::string timestamp;
+        double rssiDbfs = -120.0;
+        double afcHz = 0.0;
+        float syncDistance = 0.0F;
+        double softbitRms = 0.0;
+        int viterbiMetric = -1;
+        bool viterbiOk = false;
+        int golayOk = 0;
+        int golayFail = 0;
+        int crcStatus = -1;
+        int lsfStatus = -1;
+        int frameStatus = -1;
+        std::string syncType;
+        std::string result;
+    };
+    struct SoftbitAggregate {
+        std::uint64_t failedFrames = 0;
+        std::uint64_t softbits = 0;
+        std::uint64_t saturatedLow = 0;
+        std::uint64_t saturatedHigh = 0;
+        std::uint64_t nearCentre = 0;
+        std::array<std::uint64_t, 16> histogram{};
+        m17::SoftbitStats last;
+    };
 
 public:
     M17Plugin(M17Config config, SystemStatistics* stats)
@@ -89,10 +114,12 @@ public:
               m_lsfWasSyncOnly =
                   m_synchronizer.lastKind() == m17::M17Synchronizer::Kind::SyncOnly;
               m_decoder.decodeFrame(typ, softBits);
+              const m17::FrameAudit frameAudit = m_decoder.lastFrameAudit();
               const bool useful = m_lsfDecoded || syncedBefore != 0 ||
                                   m_decoder.syncedType() != 0;
               const char* result = typ == m17::EOTMarker
                   ? "EOT" : (useful ? "M17" : "Rejected");
+              recordFrameAudit(evaluation, frameAudit, result);
               recordSyncBurst(evaluation, result, useful);
               if (useful) {
                   if (m_syncBurst == 0 ||
@@ -366,8 +393,12 @@ public:
         if (m_networkTxThread.joinable())
             m_networkTxThread.join();
         std::lock_guard<std::mutex> lock(m_diagMutex);
+        if (m_frameAudits.size() > 0)
+            writeSoftbitStatsLocked();
         if (m_candidateOut.is_open())
             m_candidateOut.close();
+        if (m_frameAuditOut.is_open())
+            m_frameAuditOut.close();
     }
 
     std::string_view id() const noexcept override { return "m17"; }
@@ -488,6 +519,18 @@ public:
         t.metrics["sync_misses"] = static_cast<double>(m_syncMisses);
         t.metrics["average_symbol_level"] = m_averageSymbolLevel;
         t.metrics["rssi_at_sync"] = m_rssiAtSync;
+        const m17::LayerCountersSnapshot layers = m_decoder.layerCounters();
+        t.metrics["sync_detected"] = static_cast<double>(layers.syncDetected);
+        t.metrics["lsf_ok"] = static_cast<double>(layers.lsfOk);
+        t.metrics["lsf_fail"] = static_cast<double>(layers.lsfFail);
+        t.metrics["crc_ok"] = static_cast<double>(layers.crcOk);
+        t.metrics["crc_fail"] = static_cast<double>(layers.crcFail);
+        t.metrics["golay_ok"] = static_cast<double>(layers.golayOk);
+        t.metrics["golay_fail"] = static_cast<double>(layers.golayFail);
+        t.metrics["viterbi_ok"] = static_cast<double>(layers.viterbiOk);
+        t.metrics["viterbi_fail"] = static_cast<double>(layers.viterbiFail);
+        t.metrics["frame_ok"] = static_cast<double>(layers.frameOk);
+        t.metrics["frame_fail"] = static_cast<double>(layers.frameFail);
         // Packet statistics: an operator can see that nothing was lost and,
         // when something was, why.
         const m17::Decoder::Counters counters = m_decoder.counters();
@@ -535,6 +578,7 @@ public:
     std::string diagnosticsJson() const override
     {
         std::lock_guard<std::mutex> lock(m_diagMutex);
+        const m17::LayerCountersSnapshot layers = m_decoder.layerCounters();
         std::ostringstream out;
         out << std::fixed << std::setprecision(3);
         out << "{\"afc_correction_hz\":" << m_diagAfcHz
@@ -545,7 +589,45 @@ public:
             << ",\"sync_misses\":" << m_syncMisses
             << ",\"average_symbol_level\":" << m_averageSymbolLevel
             << ",\"rssi_at_sync\":" << m_rssiAtSync
-            << ",\"candidates\":[";
+            << ",\"sync_detected\":" << layers.syncDetected
+            << ",\"lsf_ok\":" << layers.lsfOk
+            << ",\"lsf_fail\":" << layers.lsfFail
+            << ",\"crc_ok\":" << layers.crcOk
+            << ",\"crc_fail\":" << layers.crcFail
+            << ",\"golay_ok\":" << layers.golayOk
+            << ",\"golay_fail\":" << layers.golayFail
+            << ",\"viterbi_ok\":" << layers.viterbiOk
+            << ",\"viterbi_fail\":" << layers.viterbiFail
+            << ",\"frame_ok\":" << layers.frameOk
+            << ",\"frame_fail\":" << layers.frameFail
+            << ",\"softbit_stats\":{\"failed_frames\":" << m_softbits.failedFrames
+            << ",\"softbits\":" << m_softbits.softbits
+            << ",\"saturated_low\":" << m_softbits.saturatedLow
+            << ",\"saturated_high\":" << m_softbits.saturatedHigh
+            << ",\"near_centre\":" << m_softbits.nearCentre
+            << ",\"last_rms\":" << m_softbits.last.rms
+            << "},\"frames\":[";
+        bool firstFrame = true;
+        for (const FrameAuditEntry& entry : m_frameAudits) {
+            if (!firstFrame)
+                out << ',';
+            firstFrame = false;
+            out << "{\"timestamp\":\"" << entry.timestamp
+                << "\",\"sync_type\":\"" << entry.syncType
+                << "\",\"rssi_dbfs\":" << entry.rssiDbfs
+                << ",\"afc_correction_hz\":" << entry.afcHz
+                << ",\"sync_distance\":" << entry.syncDistance
+                << ",\"softbit_rms\":" << entry.softbitRms
+                << ",\"viterbi_metric\":" << entry.viterbiMetric
+                << ",\"viterbi_ok\":" << (entry.viterbiOk ? "true" : "false")
+                << ",\"golay_ok\":" << entry.golayOk
+                << ",\"golay_fail\":" << entry.golayFail
+                << ",\"crc\":\"" << statusName(entry.crcStatus)
+                << "\",\"lsf\":\"" << statusName(entry.lsfStatus)
+                << "\",\"frame\":\"" << statusName(entry.frameStatus)
+                << "\",\"result\":\"" << entry.result << "\"}";
+        }
+        out << "],\"candidates\":[";
         bool first = true;
         for (const Candidate& candidate : m_candidates) {
             if (!first)
@@ -560,6 +642,21 @@ public:
         }
         out << "]}";
         return out.str();
+    }
+
+    void resetDiagnostics() override
+    {
+        m_decoder.resetLayerCounters();
+        std::lock_guard<std::mutex> lock(m_diagMutex);
+        m_candidates.clear();
+        m_frameAudits.clear();
+        m_softbits = SoftbitAggregate{};
+        m_syncHits = 0;
+        m_syncMisses = 0;
+        m_lastRejectedCandidate = {};
+        m_lastFrameArtifact = {};
+        m_lastSoftbitWrite = {};
+        writeSoftbitStatsLocked();
     }
 
 private:
@@ -583,6 +680,235 @@ private:
             case m17::EOTMarker:  return "EOT";
             default:              return "None";
         }
+    }
+
+    static std::string statusName(int status)
+    {
+        if (status == 1) return "OK";
+        if (status == 0) return "FAIL";
+        return "N/A";
+    }
+
+    static std::string auditTimestamp()
+    {
+        const auto now = std::chrono::system_clock::now();
+        const std::time_t value = std::chrono::system_clock::to_time_t(now);
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+        std::tm tm{};
+        localtime_r(&value, &tm);
+        char text[40];
+        std::strftime(text, sizeof(text), "%Y-%m-%dT%H:%M:%S", &tm);
+        std::ostringstream out;
+        out << text << '.' << std::setfill('0') << std::setw(3) << ms.count();
+        return out.str();
+    }
+
+    static std::string hexBytes(const std::vector<std::uint8_t>& bytes)
+    {
+        std::ostringstream out;
+        out << std::hex << std::setfill('0');
+        for (const std::uint8_t value : bytes)
+            out << std::setw(2) << static_cast<unsigned int>(value);
+        return out.str();
+    }
+
+    static std::string hardBitString(const std::vector<m17::SoftBit>& bits)
+    {
+        std::string out;
+        out.reserve(bits.size());
+        for (const m17::SoftBit bit : bits)
+            out += bit > m17::SoftMaybe ? '1' : '0';
+        return out;
+    }
+
+    void recordFrameAudit(const m17::SyncEvaluation& evaluation,
+                          const m17::FrameAudit& audit,
+                          const char* result)
+    {
+        FrameAuditEntry entry;
+        entry.timestamp = auditTimestamp();
+        entry.rssiDbfs = m_lastRssiDb;
+        entry.afcHz = m_afc.offsetHz(25000.0);
+        entry.syncDistance = evaluation.distance;
+        entry.softbitRms = audit.softbitStats.rms;
+        entry.viterbiMetric = audit.viterbiMetric;
+        entry.viterbiOk = audit.viterbiOk;
+        entry.golayOk = audit.golayOk;
+        entry.golayFail = audit.golayFail;
+        entry.crcStatus = audit.crcStatus;
+        entry.lsfStatus = audit.lsfStatus;
+        entry.frameStatus = audit.frameStatus;
+        entry.syncType = syncTypeName(audit.syncType);
+        entry.result = result;
+
+        const bool failed =
+            audit.frameStatus == 0 || audit.crcStatus == 0 || audit.lsfStatus == 0;
+        std::string artifact;
+        bool requestCapture = false;
+
+        {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            m_frameAudits.push_back(entry);
+            if (m_frameAudits.size() > 100)
+                m_frameAudits.pop_front();
+
+            if (failed) {
+                ++m_softbits.failedFrames;
+                m_softbits.softbits += audit.softbitStats.count;
+                m_softbits.saturatedLow += audit.softbitStats.saturated_low;
+                m_softbits.saturatedHigh += audit.softbitStats.saturated_high;
+                m_softbits.nearCentre += audit.softbitStats.near_centre;
+                for (std::size_t i = 0; i < m_softbits.histogram.size(); ++i)
+                    m_softbits.histogram[i] += audit.softbitStats.histogram[i];
+                m_softbits.last = audit.softbitStats;
+            }
+
+            writeFrameAuditLog(entry);
+
+            const auto now = std::chrono::steady_clock::now();
+            if (m_softbits.failedFrames > 0 &&
+                (m_lastSoftbitWrite == std::chrono::steady_clock::time_point{} ||
+                 now - m_lastSoftbitWrite >= std::chrono::seconds(2))) {
+                writeSoftbitStatsLocked();
+                m_lastSoftbitWrite = now;
+            }
+
+            const auto& d = m_m17Config.diagnostics;
+            if (audit.crcStatus == 0 && evaluation.distance < 4.0F &&
+                m_lastRssiDb >= d.nearMissRssiDbfs &&
+                (m_lastFrameArtifact == std::chrono::steady_clock::time_point{} ||
+                 now - m_lastFrameArtifact >= std::chrono::milliseconds(500))) {
+                m_lastFrameArtifact = now;
+                std::ostringstream json;
+                json << std::fixed << std::setprecision(3);
+                json << "{\"timestamp\":\"" << entry.timestamp
+                     << "\",\"sync_type\":\"" << entry.syncType
+                     << "\",\"rssi_dbfs\":" << entry.rssiDbfs
+                     << ",\"afc_correction_hz\":" << entry.afcHz
+                     << ",\"sync_distance\":" << entry.syncDistance
+                     << ",\"softbit_rms\":" << entry.softbitRms
+                     << ",\"softbit_stats\":{\"count\":" << audit.softbitStats.count
+                     << ",\"mean\":" << audit.softbitStats.mean
+                     << ",\"rms\":" << audit.softbitStats.rms
+                     << ",\"saturated_low\":" << audit.softbitStats.saturated_low
+                     << ",\"saturated_high\":" << audit.softbitStats.saturated_high
+                     << ",\"near_centre\":" << audit.softbitStats.near_centre
+                     << "},\"viterbi_metric\":" << entry.viterbiMetric
+                     << ",\"viterbi_ok\":" << (entry.viterbiOk ? "true" : "false")
+                     << ",\"golay_ok\":" << entry.golayOk
+                     << ",\"golay_fail\":" << entry.golayFail
+                     << ",\"crc\":\"" << statusName(entry.crcStatus)
+                     << "\",\"lsf\":\"" << statusName(entry.lsfStatus)
+                     << "\",\"viterbi_output_hex\":\"" << hexBytes(audit.viterbiOutput)
+                     << "\",\"deinterleaved_bits\":\""
+                     << hardBitString(audit.deinterleavedSoftbits)
+                     << "\",\"softbits\":[";
+                for (std::size_t i = 0; i < audit.rawSoftbits.size(); ++i) {
+                    if (i)
+                        json << ',';
+                    json << audit.rawSoftbits[i];
+                }
+                json << "]}";
+                artifact = json.str();
+                requestCapture = true;
+            }
+        }
+
+        if (!artifact.empty()) {
+            namespace fs = std::filesystem;
+            const fs::path dir(m_m17Config.diagnostics.auditDirectory);
+            std::error_code ec;
+            fs::create_directories(dir, ec);
+            const fs::path path = dir /
+                ("frame_" + entry.timestamp + "_" +
+                 std::to_string(m_frameAuditSequence.fetch_add(1)) + ".json");
+            std::ofstream out(path, std::ios::trunc);
+            if (out.is_open())
+                out << artifact << '\n';
+        }
+        if (requestCapture && m_nearMissHandler)
+            m_nearMissHandler();
+    }
+
+    void writeFrameAuditLog(const FrameAuditEntry& entry)
+    {
+        const auto& d = m_m17Config.diagnostics;
+        if (!d.frameAuditLog)
+            return;
+        namespace fs = std::filesystem;
+        const fs::path path(d.frameAuditLogFile);
+        std::error_code ec;
+        if (path.has_parent_path())
+            fs::create_directories(path.parent_path(), ec);
+        if (!m_frameAuditOut.is_open()) {
+            m_frameAuditOut.open(path, std::ios::app);
+            if (!m_frameAuditOut.is_open())
+                return;
+        }
+        std::ostringstream line;
+        line << entry.timestamp
+             << " RSSI=" << std::fixed << std::setprecision(1) << entry.rssiDbfs
+             << " AFC=" << std::showpos << std::setprecision(0) << entry.afcHz
+             << std::noshowpos << "Hz SyncDistance=" << std::setprecision(2)
+             << entry.syncDistance << " SoftbitRMS=" << std::setprecision(3)
+             << entry.softbitRms << " ViterbiMetric=" << entry.viterbiMetric
+             << " Viterbi=" << (entry.viterbiOk ? "OK" : "FAIL")
+             << " Golay=" << (entry.golayOk + entry.golayFail == 0
+                                  ? "N/A"
+                                  : (entry.golayFail == 0 ? "OK" : "FAIL"))
+             << " CRC=" << statusName(entry.crcStatus)
+             << " LSF=" << statusName(entry.lsfStatus)
+             << " Frame=" << statusName(entry.frameStatus)
+             << " Type=" << entry.syncType << " Result=" << entry.result << '\n';
+        const std::string text = line.str();
+        const std::uintmax_t current = fs::file_size(path, ec);
+        if (!ec && current > 0 && current + text.size() > d.frameAuditLogMaxBytes) {
+            m_frameAuditOut.close();
+            for (int i = d.frameAuditLogBackups; i >= 1; --i) {
+                const fs::path from = i == 1
+                    ? path : fs::path(path.string() + "." + std::to_string(i - 1));
+                const fs::path to = fs::path(path.string() + "." + std::to_string(i));
+                fs::rename(from, to, ec);
+                ec.clear();
+            }
+            m_frameAuditOut.open(path, std::ios::trunc);
+            if (!m_frameAuditOut.is_open())
+                return;
+        }
+        m_frameAuditOut << text;
+        m_frameAuditOut.flush();
+    }
+
+    void writeSoftbitStatsLocked()
+    {
+        namespace fs = std::filesystem;
+        const fs::path dir(m_m17Config.diagnostics.auditDirectory);
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        std::ofstream out(dir / "softbit_stats.json", std::ios::trunc);
+        if (!out.is_open())
+            return;
+        out << std::fixed << std::setprecision(3)
+            << "{\"failed_frames\":" << m_softbits.failedFrames
+            << ",\"softbits\":" << m_softbits.softbits
+            << ",\"saturated_low\":" << m_softbits.saturatedLow
+            << ",\"saturated_high\":" << m_softbits.saturatedHigh
+            << ",\"near_centre\":" << m_softbits.nearCentre
+            << ",\"histogram16\":[";
+        for (std::size_t i = 0; i < m_softbits.histogram.size(); ++i) {
+            if (i)
+                out << ',';
+            out << m_softbits.histogram[i];
+        }
+        out << "],\"last\":{\"count\":" << m_softbits.last.count
+            << ",\"mean\":" << m_softbits.last.mean
+            << ",\"rms\":" << m_softbits.last.rms
+            << ",\"minimum\":" << m_softbits.last.minimum
+            << ",\"maximum\":" << m_softbits.last.maximum
+            << ",\"saturated_low\":" << m_softbits.last.saturated_low
+            << ",\"saturated_high\":" << m_softbits.last.saturated_high
+            << ",\"near_centre\":" << m_softbits.last.near_centre << "}}\n";
     }
 
     void onSyncEvaluation(const m17::SyncEvaluation& evaluation)
@@ -1074,7 +1400,11 @@ private:
 
     mutable std::mutex m_diagMutex;
     std::deque<Candidate> m_candidates;
+    std::deque<FrameAuditEntry> m_frameAudits;
+    SoftbitAggregate m_softbits;
     std::chrono::steady_clock::time_point m_lastRejectedCandidate{};
+    std::chrono::steady_clock::time_point m_lastFrameArtifact{};
+    std::chrono::steady_clock::time_point m_lastSoftbitWrite{};
     double m_diagAfcHz = 0.0;
     float m_diagSyncDistance = 0.0F;
     double m_rssiAtSync = -120.0;
@@ -1083,6 +1413,8 @@ private:
     float m_averageSymbolLevel = 0.0F;
     float m_symbolLevel = 0.0F;
     std::ofstream m_candidateOut;
+    std::ofstream m_frameAuditOut;
+    std::atomic<std::uint64_t> m_frameAuditSequence{0};
     std::function<void()> m_nearMissHandler;
 
     static constexpr long kNetTxTimeoutMs = 1000;

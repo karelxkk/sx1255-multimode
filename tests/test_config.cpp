@@ -63,6 +63,9 @@ int main()
         "    diagnostics:\n"
         "      candidate_log: true\n"
         "      candidate_log_file: /tmp/m17-candidates.log\n"
+        "      frame_audit_log: true\n"
+        "      frame_audit_log_file: /tmp/m17-frame-audit.log\n"
+        "      audit_directory: /tmp/m17-audit\n"
         "      near_miss_min_distance: 4.5\n"
         "      near_miss_max_distance: 7.0\n"
         "      near_miss_rssi_dbfs: -54\n"
@@ -110,6 +113,11 @@ int main()
     if (!config.m17.diagnostics.candidateLog ||
         config.m17.diagnostics.candidateLogFile != "/tmp/m17-candidates.log")
         return 20;
+    if (!config.m17.diagnostics.frameAuditLog ||
+        config.m17.diagnostics.frameAuditLogFile != "/tmp/m17-frame-audit.log" ||
+        config.m17.diagnostics.auditDirectory != "/tmp/m17-audit") {
+        return 23;
+    }
     if (config.m17.diagnostics.nearMissMaxDistance != 7.0 ||
         config.m17.diagnostics.nearMissRssiDbfs != -54.0 ||
         config.m17.diagnostics.nearMissIntervalMs != 125)

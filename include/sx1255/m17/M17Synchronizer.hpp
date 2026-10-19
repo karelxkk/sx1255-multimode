@@ -119,6 +119,7 @@ public:
     // Number of samples pushed since start; the difference between two bursts
     // is their spacing in samples (diagnostics).
     std::uint64_t samples() const { return m_samples; }
+    const std::vector<Symbol>& lastPayloadSymbols() const { return m_lastPayloadSymbols; }
 
     std::size_t bufferedSamples() const { return m_symbols.size(); }
 
@@ -137,6 +138,7 @@ private:
     Kind m_lastKind = Kind::Blind;
     std::uint64_t m_samples = 0;
     std::vector<Symbol> m_extracted;   // payload samples of the last burst
+    std::vector<Symbol> m_lastPayloadSymbols;
     bool m_canRetract = false;
     SyncEvaluation m_lastEvaluation{};
     float m_evaluationMaxDistance = 7.0F;
