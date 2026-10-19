@@ -1,6 +1,6 @@
 # Debian balíček a nasazení
 
-Připravený balíček: `sx1255-multimode_1.0.0-rc4_arm64.deb`
+Připravený balíček: `sx1255-multimode_1.0.0-rc5_arm64.deb`
 
 Cílová architektura je **arm64** — Raspberry Pi Zero 2 W s 64bitovým
 Raspberry Pi OS (Bookworm/Trixie). Pro 32bitový OS by se balíček stavěl jako
@@ -30,18 +30,18 @@ Na stroji s `dpkg-deb`, `cmake`, `ninja` a `g++`:
 scripts/build_deb.sh
 ```
 
-Výsledek: `sx1255-multimode_1.0.0-rc4_arm64.deb`.
+Výsledek: `sx1255-multimode_1.0.0-rc5_arm64.deb`.
 
 ## 2. Přenos na Raspberry Pi Zero 2 W
 
 ```text
-scp sx1255-multimode_1.0.0-rc4_arm64.deb user@<ip-pi>:~/
+scp sx1255-multimode_1.0.0-rc5_arm64.deb user@<ip-pi>:~/
 ```
 
 ## 3. Instalace
 
 ```text
-sudo apt-get install -y ./sx1255-multimode_1.0.0-rc4_arm64.deb
+sudo apt-get install -y ./sx1255-multimode_1.0.0-rc5_arm64.deb
 ```
 
 Případné chybějící závislosti:

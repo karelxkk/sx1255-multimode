@@ -15,7 +15,7 @@ samostatné I2S/SPI rozhraní. Stockový Raspberry Pi kernel 125 kHz neumí
 ### Kde vzít připravené soubory
 
 Kernel i zkompilovaný overlay jsou přiložené jako assety release
-[v1.0.0-rc4](https://github.com/karelxkk/sx1255-multimode/releases/tag/v1.0.0-rc4):
+[v1.0.0-rc5](https://github.com/karelxkk/sx1255-multimode/releases/tag/v1.0.0-rc5):
 
 - `rpi-zero2-kernel-6.18.54-myzero2+.deb`
 - `genericstereoaudiocodec.dtbo`
@@ -23,7 +23,7 @@ Kernel i zkompilovaný overlay jsou přiložené jako assety release
 Stažení na Pi Zero 2 W:
 
 ```text
-RELEASE=https://github.com/karelxkk/sx1255-multimode/releases/download/v1.0.0-rc4
+RELEASE=https://github.com/karelxkk/sx1255-multimode/releases/download/v1.0.0-rc5
 curl -L -O "$RELEASE/rpi-zero2-kernel-6.18.54-myzero2%2B.deb"
 curl -L -O "$RELEASE/genericstereoaudiocodec.dtbo"
 ```

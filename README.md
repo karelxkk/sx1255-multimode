@@ -81,7 +81,7 @@ stanice; výchozí `auto` používá naposledy použitý lokální mód.
 
 Oba soubory (`rpi-zero2-kernel-6.18.54-myzero2+.deb` a
 `genericstereoaudiocodec.dtbo`) jsou přiložené jako assety GitHub release
-[v1.0.0-rc4](https://github.com/karelxkk/sx1255-multimode/releases/tag/v1.0.0-rc4).
+[v1.0.0-rc5](https://github.com/karelxkk/sx1255-multimode/releases/tag/v1.0.0-rc5).
 Odkazy pro stažení jsou vypsané v [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Postup instalace kernelu a overlaye viz [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
@@ -128,7 +128,7 @@ sx1255-bench       výkonnostní profil (FFT, waterfall, RX chain)
 Deb balíček pro nasazení:
 
 ```text
-scripts/build_deb.sh        # -> sx1255-multimode_1.0.0-rc4_arm64.deb
+scripts/build_deb.sh        # -> sx1255-multimode_1.0.0-rc5_arm64.deb
 ```
 
 CLI démona:

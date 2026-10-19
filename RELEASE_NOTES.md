@@ -64,7 +64,7 @@ Release obsahuje i instalační assety:
 Viz `docs/DEPLOYMENT.md`. Zkráceně:
 
 ```text
-sudo apt install ./sx1255-multimode_1.0.0-rc4_arm64.deb
+sudo apt install ./sx1255-multimode_1.0.0-rc5_arm64.deb
 sudo systemctl status sx1255-multimode
 ```
 
