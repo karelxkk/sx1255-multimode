@@ -120,7 +120,7 @@ struct M17Config {
     int    idleTimeoutMs = 1500;
     // Do not let a decoder result claim the M17 mode below this IQ-power
     // level.  Decoding still runs; the gate only controls mode detection.
-    double rssiGateDbfs = -58.0;
+    double rssiGateDbfs = -55.0;
     // Log every detected sync burst (type, distance, decoder state).  Verbose,
     // meant for diagnosing what a real radio actually transmits.
     bool   logSync = false;

@@ -121,7 +121,7 @@ m17:
   sync_follow_threshold: 4.5   # samotný packet sync uvnitř packet přenosu
   min_sync_burst: 5            # kolik synců v 500 ms vyhlásí M17 jako mód
   idle_timeout_ms: 1500        # konec relace po tichu
-  rssi_gate_dbfs: -58.0        # pod touto úrovní M17 nepřevezme mód
+  rssi_gate_dbfs: -55.0        # pod touto úrovní M17 nepřevezme mód
   network_packet_queue: 8
   network_packet_ttl_ms: 2000
 ```

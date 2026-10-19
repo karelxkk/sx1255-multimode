@@ -132,7 +132,7 @@ modes:
     # nezávisí, takže krátká SMS se neztratí.
     min_sync_burst: 5
     idle_timeout_ms: 1500        # konec M17 relace po tichu
-    rssi_gate_dbfs: -58.0        # pod touto úrovní M17 nepřevezme mód
+    rssi_gate_dbfs: -55.0        # pod touto úrovní M17 nepřevezme mód
                                  # (dekódování packetů běží dál)
     # Diagnostika: vypsat každý detekovaný sync burst (typ, vzdálenost, stav
     # dekodéru). Zapnout jen pro test s reálným rádiem - LSF a packet rámce se
