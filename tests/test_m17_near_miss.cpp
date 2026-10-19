@@ -96,7 +96,12 @@ int main()
          std::filesystem::directory_iterator(config.diagnostics.auditDirectory)) {
         if (entry.path().extension() == ".json" &&
             entry.path().filename().string().rfind("frame_", 0) == 0) {
-            artifact = true;
+            std::ifstream in(entry.path());
+            const std::string body((std::istreambuf_iterator<char>(in)),
+                                   std::istreambuf_iterator<char>());
+            artifact = body.find("\"softbits\":[") != std::string::npos &&
+                body.find("\"deinterleaved_bits\":\"") != std::string::npos &&
+                body.find("\"viterbi_output_hex\":\"") != std::string::npos;
         }
     }
     if (!artifact)

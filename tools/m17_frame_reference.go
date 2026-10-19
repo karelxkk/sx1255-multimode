@@ -37,6 +37,9 @@ type comparison struct {
 	File                  string `json:"file"`
 	Sample                uint64 `json:"sample"`
 	SyncType              string `json:"sync_type"`
+	RSSI                  float64 `json:"rssi_dbfs"`
+	AFC                   float64 `json:"afc_correction_hz"`
+	SyncDistance          float32 `json:"sync_distance"`
 	SoftbitsEqual         bool   `json:"softbits_equal"`
 	DeinterleavedEqual    bool   `json:"deinterleaved_equal"`
 	ViterbiInputEqual     bool   `json:"viterbi_input_equal"`
@@ -172,6 +175,9 @@ func main() {
 				File:                 rec.File,
 				Sample:               rec.Sample,
 				SyncType:             rec.SyncType,
+				RSSI:                 rec.RSSI,
+				AFC:                  rec.AFC,
+				SyncDistance:         rec.SyncDistance,
 				SoftbitsEqual:        true,
 				DeinterleavedEqual:   true,
 				ViterbiInputEqual:    true,
@@ -219,6 +225,9 @@ func main() {
 			File:                 rec.File,
 			Sample:               rec.Sample,
 			SyncType:             rec.SyncType,
+			RSSI:                 rec.RSSI,
+			AFC:                  rec.AFC,
+			SyncDistance:         rec.SyncDistance,
 			CRCCpp:               rec.CRC,
 			LSFCpp:               rec.LSF,
 			FrameCpp:             rec.Frame,
