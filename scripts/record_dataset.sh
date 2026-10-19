@@ -13,12 +13,26 @@ set -euo pipefail
 MODE="${1:?usage: record_dataset.sh MODE OUTPUT.iq [SECONDS]}"
 OUTPUT="${2:?usage: record_dataset.sh MODE OUTPUT.iq [SECONDS]}"
 SECONDS_REC="${3:-30}"
-CONFIG="${SX1255_CONFIG:-sx1255-multimode.yaml}"
+BIN="${SX1255_BIN:-./build/sx1255-multimode}"
+if [[ ! -x "$BIN" ]]; then
+    BIN="$(command -v sx1255-multimode || true)"
+fi
+if [[ -z "$BIN" ]]; then
+    echo "sx1255-multimode binary not found (set SX1255_BIN)" >&2
+    exit 2
+fi
+if [[ -n "${SX1255_CONFIG:-}" ]]; then
+    CONFIG="$SX1255_CONFIG"
+elif [[ -f /etc/sx1255-multimode/sx1255-multimode.yaml ]]; then
+    CONFIG=/etc/sx1255-multimode/sx1255-multimode.yaml
+else
+    CONFIG=sx1255-multimode.yaml
+fi
 
 OUT_DIR="$(dirname "$OUTPUT")"
 mkdir -p "$OUT_DIR"
 
-./build/sx1255-multimode -config "$CONFIG" --capture "$OUTPUT" --log-level info &
+"$BIN" -config "$CONFIG" --capture "$OUTPUT" --log-level info &
 DAEMON_PID=$!
 
 trap 'kill -TERM "$DAEMON_PID" 2>/dev/null || true' EXIT
