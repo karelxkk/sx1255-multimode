@@ -17,10 +17,20 @@ Příjem M17 packetů (SMS, poloha) je přepracovaný tak, aby žádný packet n
   je „síťový mód“ (network.mode auto) zrovna FM nebo D-Star,
 - každý packet, chybné CRC i nepoužitelný rámec je v logu a v telemetrii
   (`packets_rx`, `packets_bad_crc`, `frames_dropped`, `net_packets_*`).
+- M17 má RSSI gate `-55 dBFS`; pod ním mód nepřevezme kanál, ale dekodér
+  dostává IQ dál, takže se packet nezahazuje.
+- Platný LSF s CRC a rozumným volacím znakem přebírá kanál okamžitě, takže
+  krátká M17 relace neprohraje s FM.
+- Falešné packet hlavičky už nedrží M17 relaci navěky; při timeoutu se čistí
+  i `PacketSync`.
+- FM používá RSSI squelch s 700ms potvrzením, polyfázový 25k→16k resampler,
+  de-emfázi 100 us a audio LPF 2600 Hz.
+- Lokální relace mají timeout 300 s; síťový `ACTIVE_SVXLINK` a
+  `ACTIVE_M17_NETWORK` se globálním lokálním timeoutem neukončují.
 
 Detaily a ladění prahů: `docs/M17_PACKET_RX.md`.
 
-## v1.0.0-rc4
+## Obecné informace
 
 ## Co to je
 
@@ -30,7 +40,7 @@ a režimy (FM+CTCSS, D-Star, M17) jako nezávislé pluginy.
 
 ## Stav release
 
-**v1.0.0-rc4** — dokončený D-Star řetězec včetně lokálního RX→TX převaděče,
+**v1.0.0-rc5** — dokončený D-Star řetězec včetně lokálního RX→TX převaděče,
 DSRP gatewaye pro ircDDBGateway/DStarGateway a hotspot režimu pro DCS/XLX
 reflektory. Dashboard už nezobrazuje confidence v exponenciálním tvaru.
 
