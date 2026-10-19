@@ -139,6 +139,9 @@ public:
         , m_decoder(m17::Decoder::Callbacks{
               [this](const m17::LSF& lsf, double) {   // onLSF
                   m_lsfDecoded = true;
+                  m_lsfPending = true;
+                  m_frameConfirmed = false;
+                  m_streamFrames = 0;
                   m_lastActivity = std::chrono::steady_clock::now();
                   std::fprintf(stderr, "M17: LSF decoded (%s %s>%s)\n",
                                lsf.lsfType() == 0 ? "packet" : "stream",
@@ -147,6 +150,8 @@ public:
               [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload,
                      std::uint16_t sid, std::uint16_t fn, double) {   // onStream
                   m_lastActivity = std::chrono::steady_clock::now();
+                  if (m_lsfPending && ++m_streamFrames >= kConfirmStreamFrames)
+                      m_frameConfirmed = true;
                   forwardStream(lsf, sid, fn, payload, false);
               },
               [this](const m17::LSF&, double) {        // onStreamLICH
@@ -158,6 +163,9 @@ public:
               },
               [this](const m17::LSF& lsf, const std::vector<std::uint8_t>& payload, double ber) {  // onPacket
                   m_lastActivity = std::chrono::steady_clock::now();
+                  // A packet payload passed its CRC: this is a very strong
+                  // confirmation that the preceding LSF was real.
+                  m_frameConfirmed = true;
                   m_rfPackets++;
                   std::vector<std::uint8_t> packetBytes = lsf.toBytes();
                   packetBytes.insert(packetBytes.end(), payload.begin(), payload.end());
@@ -184,6 +192,10 @@ public:
                   else
                       ++m_lsfBadCrc;
                   m_lsfRejected = true;
+                  if (!m_frameConfirmed) {
+                      m_lsfPending = false;
+                      m_streamFrames = 0;
+                  }
                   if (!m_lsfWasSyncOnly)
                       logDiag(m_diagLsf, "LSF CRC fail",
                               lsf.dstCallsign() + ">" + lsf.srcCallsign() +
@@ -208,6 +220,9 @@ public:
               [this]() {   // onEOT: the decoder saw the end of a transmission
                   m_eotSeen = true;
                   m_lastActivity = std::chrono::steady_clock::now();
+                  m_frameConfirmed = false;
+                  m_lsfPending = false;
+                  m_streamFrames = 0;
               },
               [this](const m17::LSF& lsf) {   // onPacketReattached
                   m_lastActivity = std::chrono::steady_clock::now();
@@ -366,16 +381,18 @@ public:
         // A quiet channel must not leave a stale packet header behind that a
         // much later frame could be attached to.
         if (std::chrono::steady_clock::now() - m_lastActivity >
-            std::chrono::milliseconds(m_m17Config.idleTimeoutMs))
+            std::chrono::milliseconds(m_m17Config.idleTimeoutMs)) {
             m_decoder.expireRetention();
+            m_frameConfirmed = false;
+            m_lsfPending = false;
+            m_streamFrames = 0;
+        }
         feed(block);
-        // A valid LSF is the acquisition trigger.  Do not make M17 wait for
-        // several stream syncs: a short packet or a brief voice burst would
-        // otherwise lose the channel to FM.  The RSSI gate is the protection
-        // against noise-floor false headers.
-        const bool raw = m_lsfDecoded || m_detected ||
-                         m_decoder.syncedType() != 0;
-        const bool detected = raw && rssi >= m_m17Config.rssiGateDbfs;
+        // A valid LSF starts acquisition, but a single CRC-passing false
+        // header must not take the channel.  Voice confirms with two stream
+        // frames; a packet confirms with its payload CRC.
+        const bool detected = m_frameConfirmed &&
+                              rssi >= m_m17Config.rssiGateDbfs;
         m_modeDetected = detected;
         if (detected) {
             if (m_countDetections && !m_detectionReported) {
@@ -427,6 +444,9 @@ public:
         m_active = false;
         m_eotSeen = false;
         m_syncBurst = 0;
+        m_frameConfirmed = false;
+        m_lsfPending = false;
+        m_streamFrames = 0;
         // A packet that is still being reassembled must survive the session
         // end; only an open stream has to go, because its LSF is stale once
         // the session is over.
@@ -828,6 +848,9 @@ private:
     bool m_detected = false;
     bool m_lsfDecoded = false;
     bool m_modeDetected = false;
+    bool m_lsfPending = false;
+    bool m_frameConfirmed = false;
+    unsigned m_streamFrames = 0;
     bool m_countDetections = true;
     bool m_detectionReported = false;
     bool m_eotSeen = false;
@@ -855,6 +878,9 @@ private:
     int m_syncBurst = 0;
     std::chrono::steady_clock::time_point m_syncBurstStart{};
 
+    // A lone false LSF must not steal the channel from FM.  A real voice
+    // stream confirms itself with two valid stream frames (~80 ms).
+    static constexpr unsigned kConfirmStreamFrames = 2;
     static constexpr long kNetTxTimeoutMs = 1000;
 };
 
