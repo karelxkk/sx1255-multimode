@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <numbers>
 #include <span>
 #include <vector>
 
@@ -55,6 +56,14 @@ class FMDemodAFC {
 public:
     FMDemodAFC(int avgCnt, double fastN, double slowN);
     double process(CD sample);
+    // Diagnostic view of the software AFC state.  This is the demodulated
+    // carrier offset currently subtracted by process(); it does not change
+    // the receive algorithm.
+    double offsetRadiansPerSample() const { return m_offset; }
+    double offsetHz(double sampleRate) const
+    {
+        return m_offset * sampleRate / (2.0 * std::numbers::pi);
+    }
 private:
     CD m_prev{1.0, 0.0};
     double m_fast = 0.0, m_slow = 0.0, m_before = 0.0, m_warm = 0.0;

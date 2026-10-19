@@ -7,6 +7,7 @@ datasets/
   fm/       FM + CTCSS záznamy
   dstar/    D-Star záznamy
   m17/      M17 záznamy
+    dm1701/ reálná měření DM-1701 / OpenRTX + metadata AFC/SyncDistance
   unknown/  šum / neznámé signály
 ```
 

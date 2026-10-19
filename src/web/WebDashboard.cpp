@@ -27,6 +27,12 @@ const std::string& dashboardHtml()
   .plugin { border:1px solid #21262d; border-radius:6px; padding:8px 10px; min-width:160px; }
   .plugin.active { border-color:#2ea043; }
   .plugin small { color:#8b949e; }
+  .diag-table { width:100%; border-collapse:collapse; font:12px/1.35 ui-monospace,monospace; }
+  .diag-table th, .diag-table td { padding:4px 6px; border-bottom:1px solid #21262d; text-align:right; }
+  .diag-table th:first-child, .diag-table td:first-child { text-align:left; }
+  .diag-table th { color:#8b949e; font-weight:600; position:sticky; top:0; background:#161b22; }
+  .diag-wrap { max-height:320px; overflow:auto; border:1px solid #21262d; border-radius:6px; }
+  .ok { color:#3fb950; } .bad { color:#f85149; }
 </style>
 </head>
 <body>
@@ -56,6 +62,24 @@ const std::string& dashboardHtml()
   <div class="panel">
     <h2>Pluginy</h2>
     <div id="plugins"></div>
+  </div>
+  <div class="panel">
+    <h2>M17 Diagnostics</h2>
+    <div class="grid">
+      <div class="cell"><b id="m17-afc">-</b><span>AFC correction [Hz]</span></div>
+      <div class="cell"><b id="m17-distance">-</b><span>sync distance</span></div>
+      <div class="cell"><b id="m17-confidence">-</b><span>sync confidence</span></div>
+      <div class="cell"><b id="m17-hits">-</b><span>sync hits / misses</span></div>
+      <div class="cell"><b id="m17-level">-</b><span>average symbol level</span></div>
+      <div class="cell"><b id="m17-rssi">-</b><span>RSSI at sync [dBFS]</span></div>
+    </div>
+    <div style="height:8px"></div>
+    <div class="diag-wrap">
+      <table class="diag-table">
+        <thead><tr><th>čas</th><th>RSSI</th><th>AFC Hz</th><th>sync dist</th><th>typ</th><th>výsledek</th></tr></thead>
+        <tbody id="m17-candidates"></tbody>
+      </table>
+    </div>
   </div>
 </main>
 <script>
@@ -195,12 +219,44 @@ async function refreshIq(){
   $('iq').textContent = 'IQ: ' + (s.recording ? 'nahrávám' : (s.replay ? 'replay' : 'živě')) +
     ' · ' + s.captured_samples + ' vzorků · ' + s.file;
 }
-drawSpectrum(); drawWaterfall(); refreshStatus(); refreshPlugins(); refreshIq();
+function fixed(value, digits){
+  return (typeof value === 'number' && Number.isFinite(value)) ? value.toFixed(digits) : '-';
+}
+async function refreshM17Diagnostics(){
+  const d = await getJSON('/api/m17/diagnostics');
+  if (!d || d.error) return;
+  $('m17-afc').textContent = fixed(d.afc_correction_hz, 1);
+  $('m17-distance').textContent = fixed(d.sync_distance, 2);
+  $('m17-confidence').textContent = fixed(d.sync_confidence, 3);
+  $('m17-hits').textContent = String(d.sync_hits || 0) + ' / ' + String(d.sync_misses || 0);
+  $('m17-level').textContent = fixed(d.average_symbol_level, 2);
+  $('m17-rssi').textContent = fixed(d.rssi_at_sync, 1);
+  const body = $('m17-candidates');
+  body.innerHTML = '';
+  const rows = (d.candidates || []).slice().reverse();
+  for (const c of rows){
+    const tr = document.createElement('tr');
+    const cells = [
+      c.timestamp, fixed(c.rssi_dbfs, 1), fixed(c.afc_correction_hz, 0),
+      fixed(c.sync_distance, 2), c.sync_type,
+    ];
+    for (const value of cells){
+      const td = document.createElement('td'); td.textContent = value; tr.appendChild(td);
+    }
+    const result = document.createElement('td');
+    result.textContent = c.result;
+    result.className = c.result === 'M17' ? 'ok' : 'bad';
+    tr.appendChild(result);
+    body.appendChild(tr);
+  }
+}
+drawSpectrum(); drawWaterfall(); refreshStatus(); refreshPlugins(); refreshIq(); refreshM17Diagnostics();
 setInterval(drawSpectrum, 200);
 setInterval(drawWaterfall, 2000);
 setInterval(refreshStatus, 500);
 setInterval(refreshPlugins, 2000);
 setInterval(refreshIq, 2000);
+setInterval(refreshM17Diagnostics, 500);
 </script>
 </body>
 </html>

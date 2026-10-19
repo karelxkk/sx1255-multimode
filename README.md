@@ -112,6 +112,7 @@ GET /api/spectrum   aktuální spektrum (PSD + peak-hold + noise floor)
 GET /api/waterfall  historie spektra
 GET /api/status     stav, režim, RSSI, uptime a čítače detekcí
 GET /api/plugins    seznam pluginů s telemetrií
+GET /api/m17/diagnostics  AFC, SyncDistance a posledních 100 M17 pokusů
 GET /api/iq         stav IQ záznamu/přehrávání
 GET /api/health     stav subsystémů (watchdog)
 GET /api/system     paměť, CPU, vlákna, stav frontendu
@@ -123,6 +124,9 @@ GET /api/system     paměť, CPU, vlákna, stav frontendu
 sx1255-multimode   démon
 sx1255-soak        soak test (24h/48h/7d, soak_report.json)
 sx1255-bench       výkonnostní profil (FFT, waterfall, RX chain)
+m17_rx_dump        offline rozbor sync burstů v IQ souboru
+m17_iq_audit       offline M17 telemetrie a kandidáti do JSON
+m17_afc_audit      AFC trace pro srovnání s původním m17-gateway
 ```
 
 Deb balíček pro nasazení:
@@ -168,6 +172,7 @@ docs/                    architektura, plugin API, UML diagramy
 - [M17 migrace z m17-gateway](docs/M17_MIGRATION.md)
 - [M17 bridge: zprávy a poloha](docs/M17_BRIDGE.md)
 - [M17 porting report](docs/M17_PORTING_REPORT.md)
+- [M17 / DM-1701 AFC a SyncDistance analýza](docs/M17_DM1701_ANALYSIS.md)
 - [SX1255 hardware frontend](docs/SX1255_HARDWARE.md)
 - [Validace multimódové arbitráže](docs/MULTIMODE_VALIDATION.md)
 - [IQ capture & replay](docs/IQ_CAPTURE.md)

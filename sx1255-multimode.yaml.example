@@ -138,6 +138,18 @@ modes:
     # dekodéru). Zapnout jen pro test s reálným rádiem - LSF a packet rámce se
     # logují vždy, stream bursty nejvýš 1x za sekundu.
     log_sync: false
+    # Diagnostika reálného vysílání. Candidate log je rotovaný textový soubor
+    # s RSSI, AFC korekcí, SyncDistance a výsledkem každého zachyceného pokusu.
+    # Zapisuje se jen při zapnutém hardware testu; nemění AFC ani sync prahy.
+    diagnostics:
+      candidate_log: false
+      candidate_log_file: /var/lib/sx1255-multimode/m17_candidates.log
+      candidate_log_max_bytes: 1048576
+      candidate_log_backups: 3
+      near_miss_min_distance: 4.5
+      near_miss_max_distance: 7.0
+      near_miss_rssi_dbfs: -55.0
+      near_miss_interval_ms: 100
     # Packety ze sítě čekají na volný kanál ve frontě (místo zahození).
     network_packet_queue: 8
     network_packet_ttl_ms: 2000
@@ -190,3 +202,4 @@ automatic_capture:
     false_positive: true      # trigger při falešné detekci
     unknown_signal: true      # trigger při neznámém signálu
     crash: true               # trigger při pádu
+    m17_near_miss: true       # M17 sync 4.5-7.0 bez validního LSF/rámce

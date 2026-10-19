@@ -327,6 +327,31 @@ Config loadConfig(const std::string& path)
         static_cast<int>(optInt(*m17, "network_packet_queue", config.m17.networkPacketQueue));
     config.m17.networkPacketTtlMs =
         static_cast<int>(optInt(*m17, "network_packet_ttl_ms", config.m17.networkPacketTtlMs));
+    if (hasKey(*m17, "diagnostics")) {
+        const YamlNode* diagnostics = child(*m17, "diagnostics");
+        config.m17.diagnostics.candidateLog =
+            optBool(*diagnostics, "candidate_log", config.m17.diagnostics.candidateLog);
+        config.m17.diagnostics.candidateLogFile =
+            optString(*diagnostics, "candidate_log_file", config.m17.diagnostics.candidateLogFile);
+        config.m17.diagnostics.candidateLogMaxBytes = static_cast<std::size_t>(
+            optInt(*diagnostics, "candidate_log_max_bytes",
+                   static_cast<long long>(config.m17.diagnostics.candidateLogMaxBytes)));
+        config.m17.diagnostics.candidateLogBackups = static_cast<int>(
+            optInt(*diagnostics, "candidate_log_backups",
+                   config.m17.diagnostics.candidateLogBackups));
+        config.m17.diagnostics.nearMissMinDistance =
+            optDouble(*diagnostics, "near_miss_min_distance",
+                      config.m17.diagnostics.nearMissMinDistance);
+        config.m17.diagnostics.nearMissMaxDistance =
+            optDouble(*diagnostics, "near_miss_max_distance",
+                      config.m17.diagnostics.nearMissMaxDistance);
+        config.m17.diagnostics.nearMissRssiDbfs =
+            optDouble(*diagnostics, "near_miss_rssi_dbfs",
+                      config.m17.diagnostics.nearMissRssiDbfs);
+        config.m17.diagnostics.nearMissIntervalMs = static_cast<int>(
+            optInt(*diagnostics, "near_miss_interval_ms",
+                   config.m17.diagnostics.nearMissIntervalMs));
+    }
     if (hasKey(*m17, "bridge")) {
         const YamlNode* bridge = child(*m17, "bridge");
         config.m17.bridge.enabled  = optBool(*bridge, "enabled", false);
@@ -371,6 +396,7 @@ Config loadConfig(const std::string& path)
             config.automaticCapture.triggerFalsePositive = optBool(*trigger, "false_positive", true);
             config.automaticCapture.triggerUnknownSignal = optBool(*trigger, "unknown_signal", true);
             config.automaticCapture.triggerCrash         = optBool(*trigger, "crash", true);
+            config.automaticCapture.triggerM17NearMiss   = optBool(*trigger, "m17_near_miss", true);
         }
     }
 
@@ -474,6 +500,22 @@ std::string serializeConfig(const Config& config)
     out << "    log_sync: " << (config.m17.logSync ? "true" : "false") << '\n';
     out << "    network_packet_queue: " << config.m17.networkPacketQueue << '\n';
     out << "    network_packet_ttl_ms: " << config.m17.networkPacketTtlMs << '\n';
+    out << "    diagnostics:\n";
+    out << "      candidate_log: "
+        << (config.m17.diagnostics.candidateLog ? "true" : "false") << '\n';
+    out << "      candidate_log_file: " << config.m17.diagnostics.candidateLogFile << '\n';
+    out << "      candidate_log_max_bytes: "
+        << config.m17.diagnostics.candidateLogMaxBytes << '\n';
+    out << "      candidate_log_backups: "
+        << config.m17.diagnostics.candidateLogBackups << '\n';
+    out << "      near_miss_min_distance: "
+        << formatDouble(config.m17.diagnostics.nearMissMinDistance) << '\n';
+    out << "      near_miss_max_distance: "
+        << formatDouble(config.m17.diagnostics.nearMissMaxDistance) << '\n';
+    out << "      near_miss_rssi_dbfs: "
+        << formatDouble(config.m17.diagnostics.nearMissRssiDbfs) << '\n';
+    out << "      near_miss_interval_ms: "
+        << config.m17.diagnostics.nearMissIntervalMs << '\n';
     out << "    bridge:\n";
     out << "      enabled: " << (config.m17.bridge.enabled ? "true" : "false") << '\n';
     out << "      host: " << config.m17.bridge.host << '\n';
@@ -514,6 +556,7 @@ std::string serializeConfig(const Config& config)
     out << "    false_positive: " << (config.automaticCapture.triggerFalsePositive ? "true" : "false") << '\n';
     out << "    unknown_signal: " << (config.automaticCapture.triggerUnknownSignal ? "true" : "false") << '\n';
     out << "    crash: " << (config.automaticCapture.triggerCrash ? "true" : "false") << '\n';
+    out << "    m17_near_miss: " << (config.automaticCapture.triggerM17NearMiss ? "true" : "false") << '\n';
 
     return out.str();
 }

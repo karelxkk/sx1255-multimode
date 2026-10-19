@@ -13,10 +13,15 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
+#include <ctime>
 #include <deque>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -48,6 +53,15 @@ m17::SyncThresholds syncThresholds(const M17Config& config)
 // IQ blocks into the RX chain and forwards decoded frames.
 // ---------------------------------------------------------------------------
 class M17Plugin final : public IModePlugin {
+    struct Candidate {
+        std::string timestamp;
+        double rssiDbfs = -120.0;
+        double afcHz = 0.0;
+        float syncDistance = 0.0F;
+        std::string syncType;
+        std::string result;
+    };
+
 public:
     M17Plugin(M17Config config, SystemStatistics* stats)
         : m_dcr(0.9999)
@@ -71,11 +85,15 @@ public:
               // so a short packet is never lost because it did not raise the
               // burst count.
               const std::uint16_t syncedBefore = m_decoder.syncedType();
+              const m17::SyncEvaluation evaluation = m_synchronizer.lastEvaluation();
               m_lsfWasSyncOnly =
                   m_synchronizer.lastKind() == m17::M17Synchronizer::Kind::SyncOnly;
               m_decoder.decodeFrame(typ, softBits);
               const bool useful = m_lsfDecoded || syncedBefore != 0 ||
                                   m_decoder.syncedType() != 0;
+              const char* result = typ == m17::EOTMarker
+                  ? "EOT" : (useful ? "M17" : "Rejected");
+              recordSyncBurst(evaluation, result, useful);
               if (useful) {
                   if (m_syncBurst == 0 ||
                       now - m_syncBurstStart > std::chrono::milliseconds(500)) {
@@ -228,6 +246,12 @@ public:
         , m_m17Config(std::move(config))
         , m_stats(stats)
     {
+        m_synchronizer.setEvaluationSink(
+            static_cast<float>(m_m17Config.diagnostics.nearMissMaxDistance),
+            [this](const m17::SyncEvaluation& evaluation) {
+                onSyncEvaluation(evaluation);
+            });
+
         auto streamHandler = [this](const m17::StreamDatagram& dg) {
             {
                 std::lock_guard<std::mutex> lock(m_queueMutex);
@@ -341,6 +365,9 @@ public:
             m_watchdog.join();
         if (m_networkTxThread.joinable())
             m_networkTxThread.join();
+        std::lock_guard<std::mutex> lock(m_diagMutex);
+        if (m_candidateOut.is_open())
+            m_candidateOut.close();
     }
 
     std::string_view id() const noexcept override { return "m17"; }
@@ -355,6 +382,11 @@ public:
     void setTxArbiter(ITxArbiter* arbiter) override
     {
         m_arbiter = arbiter;
+    }
+
+    void setNearMissHandler(std::function<void()> handler) override
+    {
+        m_nearMissHandler = std::move(handler);
     }
 
     Detection detect(const IQBlock& block) override
@@ -377,6 +409,11 @@ public:
                          m_decoder.syncedType() != 0;
         const bool detected = raw && rssi >= m_m17Config.rssiGateDbfs;
         m_modeDetected = detected;
+        {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            m_diagAfcHz = m_afc.offsetHz(25000.0);
+            m_averageSymbolLevel = m_symbolLevel;
+        }
         if (detected) {
             if (m_countDetections && !m_detectionReported) {
                 m_detectionReported = true;
@@ -438,12 +475,19 @@ public:
     {
         PluginTelemetry t;
         t.mode = Mode::M17;
+        std::lock_guard<std::mutex> lock(m_diagMutex);
+        t.metrics["afc_correction_hz"] = m_diagAfcHz;
+        t.metrics["sync_distance"] = m_diagSyncDistance;
         t.metrics["sync_confidence"] = m_syncConfidence;
         t.metrics["rssi_db"] = m_lastRssiDb;
         t.metrics["rssi_gate_db"] = m_m17Config.rssiGateDbfs;
         t.metrics["lsf_count"] = static_cast<double>(m_lsfCount);
         t.metrics["frame_count"] = static_cast<double>(m_frameCount);
         t.metrics["sync_count"] = static_cast<double>(m_syncCount);
+        t.metrics["sync_hits"] = static_cast<double>(m_syncHits);
+        t.metrics["sync_misses"] = static_cast<double>(m_syncMisses);
+        t.metrics["average_symbol_level"] = m_averageSymbolLevel;
+        t.metrics["rssi_at_sync"] = m_rssiAtSync;
         // Packet statistics: an operator can see that nothing was lost and,
         // when something was, why.
         const m17::Decoder::Counters counters = m_decoder.counters();
@@ -488,7 +532,177 @@ public:
         return t;
     }
 
+    std::string diagnosticsJson() const override
+    {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(3);
+        out << "{\"afc_correction_hz\":" << m_diagAfcHz
+            << ",\"sync_distance\":" << m_diagSyncDistance
+            << ",\"sync_confidence\":" << m_syncConfidence
+            << ",\"frame_count\":" << m_frameCount
+            << ",\"sync_hits\":" << m_syncHits
+            << ",\"sync_misses\":" << m_syncMisses
+            << ",\"average_symbol_level\":" << m_averageSymbolLevel
+            << ",\"rssi_at_sync\":" << m_rssiAtSync
+            << ",\"candidates\":[";
+        bool first = true;
+        for (const Candidate& candidate : m_candidates) {
+            if (!first)
+                out << ',';
+            first = false;
+            out << "{\"timestamp\":\"" << candidate.timestamp
+                << "\",\"rssi_dbfs\":" << candidate.rssiDbfs
+                << ",\"afc_correction_hz\":" << candidate.afcHz
+                << ",\"sync_distance\":" << candidate.syncDistance
+                << ",\"sync_type\":\"" << candidate.syncType
+                << "\",\"result\":\"" << candidate.result << "\"}";
+        }
+        out << "]}";
+        return out.str();
+    }
+
 private:
+    static std::string candidateTimestamp()
+    {
+        const auto now = std::chrono::system_clock::now();
+        const std::time_t value = std::chrono::system_clock::to_time_t(now);
+        std::tm tm{};
+        localtime_r(&value, &tm);
+        char text[32];
+        std::strftime(text, sizeof(text), "%Y-%m-%d %H:%M:%S", &tm);
+        return text;
+    }
+
+    static std::string syncTypeName(std::uint16_t type)
+    {
+        switch (type) {
+            case m17::LSFSync:    return "LSF";
+            case m17::PacketSync: return "Packet";
+            case m17::StreamSync: return "Stream";
+            case m17::EOTMarker:  return "EOT";
+            default:              return "None";
+        }
+    }
+
+    void onSyncEvaluation(const m17::SyncEvaluation& evaluation)
+    {
+        if (evaluation.accepted)
+            return;
+        const auto& d = m_m17Config.diagnostics;
+        if (evaluation.distance < d.nearMissMinDistance ||
+            evaluation.distance > d.nearMissMaxDistance ||
+            m_lastRssiDb < d.nearMissRssiDbfs) {
+            return;
+        }
+        recordCandidate(evaluation, "Rejected", true);
+    }
+
+    void recordSyncBurst(const m17::SyncEvaluation& evaluation,
+                         const char* result,
+                         bool useful)
+    {
+        recordCandidate(evaluation, result, !useful);
+    }
+
+    void recordCandidate(const m17::SyncEvaluation& evaluation,
+                         const char* result,
+                         bool rejected)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const auto& d = m_m17Config.diagnostics;
+        bool requestCapture = false;
+
+        {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            if (rejected && d.nearMissIntervalMs > 0 &&
+                m_lastRejectedCandidate != std::chrono::steady_clock::time_point{} &&
+                now - m_lastRejectedCandidate <
+                    std::chrono::milliseconds(d.nearMissIntervalMs)) {
+                return;
+            }
+            if (rejected)
+                m_lastRejectedCandidate = now;
+
+            m_diagAfcHz = m_afc.offsetHz(25000.0);
+            m_diagSyncDistance = evaluation.distance;
+            m_rssiAtSync = m_lastRssiDb;
+            if (!rejected)
+                ++m_syncHits;
+            else
+                ++m_syncMisses;
+
+            Candidate candidate;
+            candidate.timestamp = candidateTimestamp();
+            candidate.rssiDbfs = m_lastRssiDb;
+            candidate.afcHz = m_diagAfcHz;
+            candidate.syncDistance = evaluation.distance;
+            candidate.syncType = syncTypeName(evaluation.type);
+            candidate.result = result;
+            m_candidates.push_back(std::move(candidate));
+            if (m_candidates.size() > 100)
+                m_candidates.pop_front();
+
+            writeCandidateLog(m_candidates.back());
+
+            const bool inWindow =
+                evaluation.distance >= d.nearMissMinDistance &&
+                evaluation.distance <= d.nearMissMaxDistance;
+            requestCapture = rejected && inWindow &&
+                m_lastRssiDb >= d.nearMissRssiDbfs;
+        }
+
+        if (requestCapture && m_nearMissHandler)
+            m_nearMissHandler();
+    }
+
+    void writeCandidateLog(const Candidate& candidate)
+    {
+        const auto& d = m_m17Config.diagnostics;
+        if (!d.candidateLog)
+            return;
+
+        namespace fs = std::filesystem;
+        const fs::path path(d.candidateLogFile);
+        std::error_code ec;
+        if (path.has_parent_path())
+            fs::create_directories(path.parent_path(), ec);
+
+        if (!m_candidateOut.is_open()) {
+            m_candidateOut.open(path, std::ios::app);
+            if (!m_candidateOut.is_open())
+                return;
+        }
+
+        std::ostringstream line;
+        line << candidate.timestamp
+             << " RSSI=" << std::fixed << std::setprecision(1) << candidate.rssiDbfs
+             << " AFC=" << std::showpos << std::setprecision(0) << candidate.afcHz
+             << std::noshowpos << " Hz SyncDistance=" << std::setprecision(2)
+             << candidate.syncDistance << " Type=" << candidate.syncType
+             << " Result=" << candidate.result << '\n';
+        const std::string text = line.str();
+
+        const std::uintmax_t current = fs::file_size(path, ec);
+        if (!ec && current > 0 &&
+            current + text.size() > d.candidateLogMaxBytes) {
+            m_candidateOut.close();
+            for (int i = d.candidateLogBackups; i >= 1; --i) {
+                const fs::path from = i == 1
+                    ? path : fs::path(path.string() + "." + std::to_string(i - 1));
+                const fs::path to = fs::path(path.string() + "." + std::to_string(i));
+                fs::rename(from, to, ec);
+                ec.clear();
+            }
+            m_candidateOut.open(path, std::ios::trunc);
+            if (!m_candidateOut.is_open())
+                return;
+        }
+
+        m_candidateOut << text;
+        m_candidateOut.flush();
+    }
+
     void processNetworkStream(const m17::StreamDatagram& sd)
     {
         // Half-duplex: hold reflector audio while a local RF stream is active.
@@ -779,8 +993,11 @@ private:
             const m17::CD sample{double(block.samples[n].i), double(block.samples[n].q)};
             for (const m17::CD dc : m_decimator.process(m_dcr.process(sample))) {
                 const double dem = m_afc.process(dc);
-                for (const double r : m_resampler.process(dem))
-                    m_synchronizer.push(m_s2s.process(r));
+                for (const double r : m_resampler.process(dem)) {
+                    const float symbol = m_s2s.process(r);
+                    m_symbolLevel += (std::fabs(symbol) - m_symbolLevel) / 512.0F;
+                    m_synchronizer.push(symbol);
+                }
             }
         }
     }
@@ -832,28 +1049,41 @@ private:
     bool m_detectionReported = false;
     bool m_eotSeen = false;
     std::chrono::steady_clock::time_point m_lastActivity{};
-    std::uint64_t m_lsfCount = 0;
-    std::uint64_t m_frameCount = 0;
-    std::uint64_t m_syncCount = 0;
-    std::uint64_t m_lsfBadCrc = 0;
-    std::uint64_t m_framesDropped = 0;
-    std::uint64_t m_rfPackets = 0;
-    std::uint64_t m_rfPacketsForwarded = 0;
-    std::uint64_t m_rfPacketsNotForwarded = 0;
-    std::uint64_t m_rfPacketsBadCrc = 0;
-    std::uint64_t m_netPacketsQueued = 0;
-    std::uint64_t m_netPacketsSent = 0;
-    std::uint64_t m_netPacketsDropped = 0;
+    std::atomic<std::uint64_t> m_lsfCount{0};
+    std::atomic<std::uint64_t> m_frameCount{0};
+    std::atomic<std::uint64_t> m_syncCount{0};
+    std::atomic<std::uint64_t> m_lsfBadCrc{0};
+    std::atomic<std::uint64_t> m_framesDropped{0};
+    std::atomic<std::uint64_t> m_rfPackets{0};
+    std::atomic<std::uint64_t> m_rfPacketsForwarded{0};
+    std::atomic<std::uint64_t> m_rfPacketsNotForwarded{0};
+    std::atomic<std::uint64_t> m_rfPacketsBadCrc{0};
+    std::atomic<std::uint64_t> m_netPacketsQueued{0};
+    std::atomic<std::uint64_t> m_netPacketsSent{0};
+    std::atomic<std::uint64_t> m_netPacketsDropped{0};
     DiagState m_diagLsf;
     DiagState m_diagFrame;
     DiagState m_diagSync;
     bool m_lsfRejected = false;
     bool m_lsfWasSyncOnly = false;
     std::uint64_t m_lsfSyncRejects = 0;
-    double m_syncConfidence = 0.0;
-    double m_lastRssiDb = -120.0;
+    std::atomic<double> m_syncConfidence{0.0};
+    std::atomic<double> m_lastRssiDb{-120.0};
     int m_syncBurst = 0;
     std::chrono::steady_clock::time_point m_syncBurstStart{};
+
+    mutable std::mutex m_diagMutex;
+    std::deque<Candidate> m_candidates;
+    std::chrono::steady_clock::time_point m_lastRejectedCandidate{};
+    double m_diagAfcHz = 0.0;
+    float m_diagSyncDistance = 0.0F;
+    double m_rssiAtSync = -120.0;
+    std::uint64_t m_syncHits = 0;
+    std::uint64_t m_syncMisses = 0;
+    float m_averageSymbolLevel = 0.0F;
+    float m_symbolLevel = 0.0F;
+    std::ofstream m_candidateOut;
+    std::function<void()> m_nearMissHandler;
 
     static constexpr long kNetTxTimeoutMs = 1000;
 };

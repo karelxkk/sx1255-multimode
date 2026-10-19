@@ -44,6 +44,22 @@ struct SyncMetrics {
     float lsfOnly = 0.0F;     // 8 symbols: LSF sync word alone, no preamble
 };
 
+// How a burst was recognised: by the classic best-of-six search, by the sync
+// word of a frame inside a running transmission, or by a header's sync word
+// alone.
+enum class SyncKind { Blind, Follow, SyncOnly };
+
+// Diagnostic result of one synchronizer search step.  This records what the
+// existing detector evaluated; it is not an additional detection decision.
+struct SyncEvaluation {
+    float distance = 0.0F;
+    float threshold = 0.0F;
+    std::uint16_t type = 0;
+    bool accepted = false;
+    SyncKind kind = SyncKind::Blind;
+    SyncMetrics metrics{};
+};
+
 SyncMetrics syncMetrics(const std::vector<Symbol>& symbols, int offset, int sps);
 
 // SyncDistance port (codec.go): returns (euclidean distance, sync type) of the
@@ -57,16 +73,23 @@ std::pair<float, std::uint16_t> syncDistance(const std::vector<Symbol>& symbols,
 class M17Synchronizer {
 public:
     using FrameSink = std::function<void(std::uint16_t typ, const std::vector<SoftBit>& softBits)>;
+    using EvaluationSink = std::function<void(const SyncEvaluation&)>;
 
-    // How the last burst was recognised: by the classic best-of-six search, by
-    // the sync word of a frame inside a running transmission, or by a header's
-    // sync word alone (a retry that does not repeat the preamble).
-    enum class Kind { Blind, Follow, SyncOnly };
+    using Kind = SyncKind;
 
     M17Synchronizer(int sps, FrameSink sink, SyncThresholds thresholds = {});
 
     void push(float sample);
     void reset();
+
+    // Diagnostic observer.  It is called for every emitted sync burst and for
+    // rejected search steps whose best distance is below maxDistance.  Setting
+    // the observer does not alter thresholds or symbol extraction.
+    void setEvaluationSink(float maxDistance, EvaluationSink sink)
+    {
+        m_evaluationMaxDistance = maxDistance;
+        m_evaluationSink = std::move(sink);
+    }
 
     // Undo the payload extraction of the last burst.  A sync word that turns
     // out to carry nothing valid (a false header, a header whose CRC fails)
@@ -86,6 +109,7 @@ public:
     const SyncThresholds& thresholds() const { return m_thresholds; }
     // Distance of the sync burst emitted last (diagnostics).
     float lastDistance() const { return m_lastDistance; }
+    const SyncEvaluation& lastEvaluation() const { return m_lastEvaluation; }
     // Metrics of the sync burst emitted last (diagnostics).
     const SyncMetrics& lastMetrics() const { return m_lastMetrics; }
     // True when the last burst was recognized by its sync word alone, because
@@ -114,6 +138,9 @@ private:
     std::uint64_t m_samples = 0;
     std::vector<Symbol> m_extracted;   // payload samples of the last burst
     bool m_canRetract = false;
+    SyncEvaluation m_lastEvaluation{};
+    float m_evaluationMaxDistance = 7.0F;
+    EvaluationSink m_evaluationSink;
 };
 
 }  // namespace sx1255::m17

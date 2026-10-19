@@ -206,6 +206,17 @@ int main(int argc, char** argv)
         for (const auto& plugin : registry.plugins())
             if (plugin)
                 plugin->setTxArbiter(&sessions);
+        for (const auto& plugin : registry.plugins()) {
+            if (!plugin)
+                continue;
+            plugin->setNearMissHandler([&autoCapture, &config] {
+                if (config.automaticCapture.enabled &&
+                    config.automaticCapture.triggerM17NearMiss) {
+                    autoCapture.trigger(
+                        sx1255::debug::CaptureTrigger::M17NearMiss);
+                }
+            });
+        }
 
         if (config.automaticCapture.enabled)
             autoCapture.start();

@@ -69,6 +69,10 @@ target_link_libraries(test_m17_packet_pipeline PRIVATE sx1255_core)
 add_test(NAME m17_packet_pipeline COMMAND test_m17_packet_pipeline)
 set_tests_properties(m17_packet_pipeline PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(test_m17_near_miss test_m17_near_miss.cpp)
+target_link_libraries(test_m17_near_miss PRIVATE sx1255_core)
+add_test(NAME m17_near_miss COMMAND test_m17_near_miss)
+
 add_executable(test_m17_decoder_state test_m17_decoder_state.cpp)
 target_link_libraries(test_m17_decoder_state PRIVATE sx1255_core)
 add_test(NAME m17_decoder_state COMMAND test_m17_decoder_state)

@@ -24,6 +24,7 @@ int main()
     const std::vector<float> samples = runRXChain(iq);
 
     bool gotLSF = false;
+    bool acceptedLSF = false;
     LSF rxLsf;
     std::uint16_t syncType = 0;
 
@@ -37,6 +38,10 @@ int main()
             decoder.decodeFrame(typ, softBits);
         }
     });
+    synchronizer.setEvaluationSink(7.0F, [&](const SyncEvaluation& evaluation) {
+        if (evaluation.accepted && evaluation.type == LSFSync)
+            acceptedLSF = true;
+    });
 
     for (const float s : samples)
         synchronizer.push(s);
@@ -45,6 +50,8 @@ int main()
         return 1;
     if (!gotLSF)
         return 2;
+    if (!acceptedLSF)
+        return 5;
     if (rxLsf.toBytes() != txLsf.toBytes())
         return 3;
     if (rxLsf.dstCallsign() != "N1ADJ" || rxLsf.srcCallsign() != "OK1LBC")

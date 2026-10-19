@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-14T00:55:20",
+  "rx_frequency_hz": 430975000,
+  "expected_mode": "m17",
+  "detected_mode": "unknown",
+  "detected": false,
+  "rssi_dbfs": -23.864534,
+  "afc_correction_hz": -297.354748,
+  "sync_distance": 3.987484,
+  "duration_seconds": 15.275648,
+  "source": "Baofeng DM-1701 / OpenRTX (prior capture; source inferred from test session)",
+  "iq_path": "/var/lib/sx1255-multimode/capture_20261014_005520.iq",
+  "analysis_file": "datasets/m17/afc_audit/analysis/capture_20261014_005520.json",
+  "notes": "AFC a SyncDistance were measured offline with the current sx1255-multimode RX chain; no detection thresholds were changed."
+}

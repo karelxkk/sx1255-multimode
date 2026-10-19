@@ -5,3 +5,5 @@
 sx1255-multimode.yaml
 compile_commands.json
 *.deb
+/datasets/**/*.iq
+/datasets/**/*.f64

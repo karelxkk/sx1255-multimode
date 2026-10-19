@@ -129,6 +129,22 @@ struct M17Config {
     int    networkPacketQueue = 8;
     int    networkPacketTtlMs = 2000;
 
+    struct Diagnostics {
+        // Rotating text log with the most recent synchronizer candidates.
+        // Disabled by default because it is intended for hardware diagnosis.
+        bool        candidateLog = false;
+        std::string candidateLogFile = "/var/lib/sx1255-multimode/m17_candidates.log";
+        std::size_t candidateLogMaxBytes = 1024 * 1024;
+        int         candidateLogBackups = 3;
+        // A rejected search step is a near miss when its best sync distance is
+        // in this interval and the carrier is above the RSSI threshold.
+        double      nearMissMinDistance = 4.5;
+        double      nearMissMaxDistance = 7.0;
+        double      nearMissRssiDbfs = -55.0;
+        // Limit repeated rejected samples from the same carrier/window.
+        int         nearMissIntervalMs = 100;
+    } diagnostics;
+
     // Secondary M17 inet connection for m17-bridge (APRS messaging and GNSS
     // position).  The main `reflector` stays available for voice/stream.
     struct Bridge {
@@ -173,6 +189,7 @@ struct AutomaticCaptureConfig {
     bool        triggerFalsePositive = true;
     bool        triggerUnknownSignal = true;
     bool        triggerCrash         = true;
+    bool        triggerM17NearMiss   = true;
 };
 
 struct SpectrumConfig {

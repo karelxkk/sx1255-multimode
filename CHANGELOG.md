@@ -6,6 +6,19 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Přidáno
 
+- M17 diagnostics: `/api/plugins` a `/api/m17/diagnostics` nyní zobrazují
+  AFC korekci, SyncDistance, sílu symbolů, RSSI při syncu a historii
+  posledních 100 kandidátů. Dashboard má samostatný panel M17 Diagnostics.
+- Volitelný rotovaný `m17_candidates.log` s RSSI, AFC, SyncDistance a
+  výsledkem každého zachyceného M17 pokusu.
+- Trigger `m17_near_miss` pro automatický IQ capture při SyncDistance
+  4.5-7.0 bez validního LSF/rámce.
+- Offline nástroje `m17_iq_audit`, `m17_afc_audit` a `m17_dataset_report.py`;
+  AFC audit porovnává C++ trasu s původním Go `m17-gateway`.
+- Dataset `datasets/m17/dm1701/` a skript pro sběr reálných vysílání
+  z Baofeng DM-1701 / OpenRTX.
+- Analýza `docs/M17_DM1701_ANALYSIS.md` s histogramy AFC a SyncDistance.
+
 - M17 packet mode TX (`generatePacketSymbols`) a přenos packet datagramů
   přes `M17ReflectorClient::sendPacket`.
 - M17 plugin přeposílá packet rámce z RF do M17 inet klienta a naopak je

@@ -218,6 +218,17 @@ std::string HttpStatusServer::handleIq() const
     return buf;
 }
 
+std::string HttpStatusServer::handleM17Diagnostics() const
+{
+    if (m_registry) {
+        for (const auto& plugin : m_registry->plugins()) {
+            if (plugin && plugin->mode() == Mode::M17)
+                return plugin->diagnosticsJson();
+        }
+    }
+    return "{\"error\":\"M17 plugin is not available\"}";
+}
+
 std::string HttpStatusServer::handleSpectrum() const
 {
     return m_spectrumProvider ? m_spectrumProvider() : "{\"spectrum\":[],\"peak_hold\":[]}";
@@ -265,6 +276,8 @@ void HttpStatusServer::run()
                 body = handleStatus();
             else if (std::strstr(buf, "GET /api/plugins"))
                 body = handlePlugins();
+            else if (std::strstr(buf, "GET /api/m17/diagnostics"))
+                body = handleM17Diagnostics();
             else if (std::strstr(buf, "GET /api/iq"))
                 body = handleIq();
             else if (std::strstr(buf, "GET /api/spectrum"))

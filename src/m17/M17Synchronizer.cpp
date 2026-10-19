@@ -196,6 +196,13 @@ void M17Synchronizer::push(float sample)
     if (dist < candidates[best].limit)
         typ = candidates[best].type;
 
+    SyncEvaluation evaluation;
+    evaluation.metrics = metrics;
+    evaluation.distance = candidates[best].distance;
+    evaluation.threshold = candidates[best].limit;
+    evaluation.type = candidates[best].type;
+    evaluation.kind = Kind::Blind;
+
     // Follow mode: while a packet transmission is already being received, the
     // packet sync word alone identifies its frames.  This must not depend on
     // the blind best-of-six result: in a real transmission the pair windows
@@ -210,6 +217,10 @@ void M17Synchronizer::push(float sample)
         dist = metrics.packetOnly;
         m_lastFollow = true;
         m_lastKind = Kind::Follow;
+        evaluation.distance = dist;
+        evaluation.threshold = m_thresholds.follow;
+        evaluation.type = typ;
+        evaluation.kind = Kind::Follow;
     }
 
     // A header whose preamble was not repeated: the LSF sync word alone decides.
@@ -219,6 +230,18 @@ void M17Synchronizer::push(float sample)
         typ = LSFSync;
         dist = metrics.lsfOnly;
         m_lastKind = Kind::SyncOnly;
+        evaluation.distance = dist;
+        evaluation.threshold = m_thresholds.lsfSync;
+        evaluation.type = typ;
+        evaluation.kind = Kind::SyncOnly;
+    }
+
+    evaluation.accepted = typ != 0;
+    evaluation.type = typ == 0 ? candidates[best].type : typ;
+    m_lastEvaluation = evaluation;
+    if (m_evaluationSink &&
+        (evaluation.accepted || evaluation.distance < m_evaluationMaxDistance)) {
+        m_evaluationSink(evaluation);
     }
 
     if (typ == 0) {

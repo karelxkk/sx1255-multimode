@@ -78,6 +78,13 @@ enable_testing()
 # Offline analysis helper for recorded IQ files (not installed).
 add_executable(m17_rx_dump tools/m17_rx_dump.cpp)
 target_link_libraries(m17_rx_dump PRIVATE sx1255_core)
+
+# Offline AFC comparison against the original m17-gateway Go implementation.
+add_executable(m17_afc_audit tools/m17_afc_audit.cpp)
+target_link_libraries(m17_afc_audit PRIVATE sx1255_core)
+
+add_executable(m17_iq_audit tools/m17_iq_audit.cpp)
+target_link_libraries(m17_iq_audit PRIVATE sx1255_core)
 add_subdirectory(tests)
 
 # ---------------------------------------------------------------------------
@@ -86,6 +93,7 @@ add_subdirectory(tests)
 include(GNUInstallDirs)
 
 install(TARGETS sx1255-multimode sx1255-soak sx1255-bench sx1255-fp-audit
+                m17_rx_dump m17_iq_audit
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES sx1255-multimode.yaml.example

@@ -22,6 +22,7 @@ událost nemusí být předem naplánovaná.
 | `false_positive` | pozitivní detekce v okamžiku, kdy už jiný plugin vlastní kanál |
 | `unknown_signal` | RSSI nad -90 dBm po dobu 2 s, ale žádný plugin nezískal relaci |
 | `crash` | výjimka zachycená v hlavní smyčce (best-effort, uloží pre-trigger) |
+| `m17_near_miss` | RSSI nad prahem a SyncDistance 4.5-7.0, ale LSF/rámec neprošel validací |
 
 Pro `crash` se post-trigger nečeká (proces končí), uloží se dostupná
 pre-historie.
@@ -38,6 +39,19 @@ automatic_capture:
     false_positive: true
     unknown_signal: true
     crash: true
+    m17_near_miss: true
+```
+
+Meze near-miss triggeru se nastavují v `m17.diagnostics`:
+
+```yaml
+modes:
+  m17:
+    diagnostics:
+      near_miss_min_distance: 4.5
+      near_miss_max_distance: 7.0
+      near_miss_rssi_dbfs: -55.0
+      near_miss_interval_ms: 100
 ```
 
 Výsledek: `capture_YYYYMMDD_HHMMSS.iq` v zadaném adresáři, kompatibilní s

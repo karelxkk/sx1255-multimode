@@ -60,8 +60,18 @@ int main()
         "      host: 127.0.0.1\n"
         "      port: 17001\n"
         "      module: A\n"
+        "    diagnostics:\n"
+        "      candidate_log: true\n"
+        "      candidate_log_file: /tmp/m17-candidates.log\n"
+        "      near_miss_min_distance: 4.5\n"
+        "      near_miss_max_distance: 7.0\n"
+        "      near_miss_rssi_dbfs: -54\n"
+        "      near_miss_interval_ms: 125\n"
         "network:\n"
-        "  mode: dstar\n";
+        "  mode: dstar\n"
+        "automatic_capture:\n"
+        "  trigger:\n"
+        "    m17_near_miss: true\n";
 
     const std::string path = writeTemp(yaml);
     const sx1255::Config config = sx1255::loadConfig(path);
@@ -97,6 +107,15 @@ int main()
         return 18;
     if (config.m17.bridge.host != "127.0.0.1" || config.m17.bridge.port != 17001)
         return 19;
+    if (!config.m17.diagnostics.candidateLog ||
+        config.m17.diagnostics.candidateLogFile != "/tmp/m17-candidates.log")
+        return 20;
+    if (config.m17.diagnostics.nearMissMaxDistance != 7.0 ||
+        config.m17.diagnostics.nearMissRssiDbfs != -54.0 ||
+        config.m17.diagnostics.nearMissIntervalMs != 125)
+        return 21;
+    if (!config.automaticCapture.triggerM17NearMiss)
+        return 22;
     if (config.network.mode != "dstar")
         return 16;
     if (sx1255::parseNetworkMode(config.network.mode) != sx1255::Mode::DStar)

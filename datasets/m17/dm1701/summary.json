@@ -1,0 +1,19 @@
+{
+  "records": 16,
+  "successful_records": 0,
+  "failed_records": 16,
+  "accepted_sync_bursts": 0,
+  "rejected_sync_bursts": 404,
+  "accepted_afc_hz": {
+    "min": null,
+    "median": null,
+    "max": null
+  },
+  "rejected_afc_hz": {
+    "min": -1387.921982,
+    "median": 1524.718438,
+    "max": 1672.709523
+  },
+  "best_rejected_sync_distance": 3.327738,
+  "target_record_count": "20-50"
+}

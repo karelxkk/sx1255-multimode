@@ -18,6 +18,7 @@ enum class CaptureTrigger {
     UnknownSignal = 1,
     Crash         = 2,
     Health        = 3,
+    M17NearMiss   = 4,
 };
 
 inline const char* toString(CaptureTrigger trigger)
@@ -27,6 +28,7 @@ inline const char* toString(CaptureTrigger trigger)
         case CaptureTrigger::UnknownSignal: return "unknown_signal";
         case CaptureTrigger::Crash:         return "crash";
         case CaptureTrigger::Health:        return "health";
+        case CaptureTrigger::M17NearMiss:   return "m17_near_miss";
         default:                            return "unknown";
     }
 }

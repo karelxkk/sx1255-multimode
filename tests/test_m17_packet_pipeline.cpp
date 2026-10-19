@@ -186,6 +186,28 @@ int main()
         std::printf("packet pipeline: FAIL payload \"%s\", want \"%s\"\n", received.c_str(), text.c_str());
         return 1;
     }
+
+    const PluginTelemetry telemetry = plugin->telemetry();
+    for (const char* key : {"afc_correction_hz", "sync_distance", "sync_confidence",
+                            "frame_count", "sync_hits", "sync_misses",
+                            "average_symbol_level", "rssi_at_sync"}) {
+        if (telemetry.metrics.find(key) == telemetry.metrics.end()) {
+            std::printf("packet pipeline: FAIL telemetry key %s is missing\n", key);
+            return 1;
+        }
+    }
+    if (telemetry.metrics.at("sync_hits") < 1.0 ||
+        telemetry.metrics.at("average_symbol_level") <= 0.0) {
+        std::printf("packet pipeline: FAIL sync diagnostics were not populated\n");
+        return 1;
+    }
+    const std::string diagnostics = plugin->diagnosticsJson();
+    if (diagnostics.find("\"candidates\"") == std::string::npos ||
+        diagnostics.find("\"result\":\"M17\"") == std::string::npos) {
+        std::printf("packet pipeline: FAIL M17 candidate history is empty\n");
+        return 1;
+    }
+
     std::printf("packet pipeline: ok (%zu byte packet, text \"%s\")\n", packet.size(), text.c_str());
     return 0;
 }

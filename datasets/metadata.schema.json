@@ -7,9 +7,16 @@
     "date":            {"type": "string"},
     "rx_frequency_hz": {"type": "integer"},
     "rssi_dbm":        {"type": "number"},
+    "rssi_dbfs":       {"type": "number"},
+    "afc_correction_hz": {"type": "number"},
+    "sync_distance":   {"type": "number"},
+    "detected":        {"type": "boolean"},
     "detected_mode":   {"type": "string", "enum": ["FM", "D-Star", "M17", "unknown", ""]},
     "expected_mode":   {"type": "string", "enum": ["fm", "dstar", "m17", "unknown"]},
     "duration_seconds":{"type": "number"},
-    "source":          {"type": "string"}
+    "source":          {"type": "string"},
+    "iq_path":         {"type": "string"},
+    "analysis_file":   {"type": "string"},
+    "notes":           {"type": "string"}
   }
 }

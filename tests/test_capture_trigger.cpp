@@ -89,5 +89,10 @@ int main()
     }
 
     std::remove(result.file.c_str());
+
+    if (std::string(debug::toString(debug::CaptureTrigger::M17NearMiss)) !=
+        "m17_near_miss") {
+        return 12;
+    }
     return 0;
 }

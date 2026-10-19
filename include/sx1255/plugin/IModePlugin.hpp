@@ -2,6 +2,7 @@
 
 #include "sx1255/Types.hpp"
 
+#include <functional>
 #include <map>
 #include <string>
 #include <string_view>
@@ -98,6 +99,10 @@ public:
     // because most modes have nothing to clear.
     virtual void clearPendingDetection() {}
 
+    // Optional callback used by a plugin to request a diagnostic IQ capture
+    // from the application (for example an M17 near miss).
+    virtual void setNearMissHandler(std::function<void()>) {}
+
     // Disable RX processing that must not run while a different standard owns
     // the channel.  FM uses this to keep foreign-mode audio out of the
     // SVXLink bridge.
@@ -112,6 +117,11 @@ public:
     // Live diagnostic counters/confidence values for the web dashboard.
     // The default implementation reports an empty telemetry block.
     virtual PluginTelemetry telemetry() const { return {mode(), {}, {}}; }
+
+    // Optional plugin-specific diagnostic history exposed at
+    // /api/m17/diagnostics.  Plugins without diagnostics return an empty
+    // object.
+    virtual std::string diagnosticsJson() const { return "{}"; }
 };
 
 }  // namespace sx1255

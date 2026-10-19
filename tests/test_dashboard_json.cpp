@@ -107,6 +107,16 @@ int main()
         return 8;
     if (plugins.find("\"lsf_count\"") == std::string::npos)
         return 9;
+    if (plugins.find("\"afc_correction_hz\"") == std::string::npos)
+        return 15;
+    if (plugins.find("\"average_symbol_level\"") == std::string::npos)
+        return 16;
+
+    const std::string m17diag = httpGet(18081, "/api/m17/diagnostics");
+    if (m17diag.find("\"candidates\"") == std::string::npos)
+        return 17;
+    if (html.find("M17 Diagnostics") == std::string::npos)
+        return 18;
 
     const std::string status = httpGet(18081, "/api/status");
     if (status.find("\"state\":") == std::string::npos)
