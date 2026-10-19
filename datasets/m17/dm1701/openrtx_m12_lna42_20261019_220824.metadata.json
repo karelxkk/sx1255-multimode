@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-19T20:12:47.206790+00:00",
+  "lna_gain_db": 42,
+  "duration_seconds": 260,
+  "detected_mode": "",
+  "detected": false,
+  "rssi_dbfs": -59.549,
+  "afc_correction_hz": -1236.554,
+  "sync_distance": 4.336,
+  "expected_mode": "m17",
+  "source": "Baofeng DM-1701 / OpenRTX controlled LNA group"
+}

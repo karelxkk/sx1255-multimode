@@ -32,3 +32,17 @@ hlavní příčinou je přebuzení LNA. Další smysluplný krok je ověřit
 modulační výstup OpenRTX/DM-1701 proti referenčnímu M17 vysílači nebo
 snížit výkon stanice / zvětšit odstup od antény a zopakovat stejnou
 sekvenci.
+
+## Test firmware gain_m12
+
+OpenRTX v0.4.4 byl přebudován se sníženým digitálním vstupem HR_C6000
+z `-6 dB` na `-12 dB`; výkon PA se nezměnil. Při LNA 42 dB:
+
+- 490 sync rámců, z toho 326 silných,
+- 0 CRC OK,
+- medián symbolové úrovně klesl z **2.257** na **1.361**,
+- medián Viterbi metricu se zhoršil z **45** na **57**.
+
+Snížení úrovně C6000 tedy funguje, ale kvalitu CRC zhoršuje. Přebuzení
+vstupu C6000 není příčinou. Firmware `-18 dB` nemá smysl zkoušet bez další
+změny jiného parametru; baseline `-6 dB` je vhodnější pro další testy.
