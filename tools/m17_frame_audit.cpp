@@ -256,8 +256,12 @@ int main(int argc, char** argv)
              it != end; it.increment(ec)) {
             if (ec)
                 break;
-            if (it->is_regular_file() && it->path().extension() == ".iq")
-                files.push_back(it->path().string());
+            if (it->is_regular_file() && it->path().extension() == ".iq") {
+                const std::filesystem::path resolved =
+                    std::filesystem::canonical(it->path(), ec);
+                files.push_back(ec ? it->path().string() : resolved.string());
+                ec.clear();
+            }
         }
         std::sort(files.begin(), files.end());
     } else {
