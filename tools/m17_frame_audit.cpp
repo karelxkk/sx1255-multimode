@@ -34,6 +34,7 @@ struct FrameRecord {
     double afcHz = 0.0;
     float syncDistance = 0.0F;
     double softbitRms = 0.0;
+    double averageSymbolLevel = 0.0;
     int viterbiMetric = -1;
     bool viterbiOk = false;
     int golayOk = 0;
@@ -173,6 +174,13 @@ bool analyzeFile(const std::string& path, bool raw,
         record.afcHz = afc.offsetHz(25000.0);
         record.syncDistance = evaluation.distance;
         record.softbitRms = audit.softbitStats.rms;
+        double symbolSum = 0.0;
+        const std::vector<Symbol>& payloadSymbols = syncPtr->lastPayloadSymbols();
+        for (const Symbol symbol : payloadSymbols)
+            symbolSum += std::fabs(static_cast<double>(symbol));
+        if (!payloadSymbols.empty())
+            record.averageSymbolLevel =
+                symbolSum / static_cast<double>(payloadSymbols.size());
         record.viterbiMetric = audit.viterbiMetric;
         record.viterbiOk = audit.viterbiOk;
         record.golayOk = audit.golayOk;
@@ -311,6 +319,7 @@ int main(int argc, char** argv)
             << ",\"afc_correction_hz\":" << f.afcHz
             << ",\"sync_distance\":" << f.syncDistance
             << ",\"softbit_rms\":" << f.softbitRms
+            << ",\"average_symbol_level\":" << f.averageSymbolLevel
             << ",\"softbit_saturated_low\":" << f.softbits.saturated_low
             << ",\"softbit_saturated_high\":" << f.softbits.saturated_high
             << ",\"softbit_near_centre\":" << f.softbits.near_centre
