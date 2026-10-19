@@ -77,20 +77,20 @@ _Žádná data._
 
 ## Frame quality audit
 
-Offline nástroj `m17-frame-audit` zpracoval všech 16 capture a našel
-**404 sync burstů, všechny typu LSF**:
+Offline nástroj `m17-frame-audit` se správným low-IF NCO zpracoval všech
+16 starších capture a našel **3401 rámců, žádný platný M17**:
 
-- `Viterbi=OK`: **404/404** (výstup měl očekávanou délku),
-- `CRC=FAIL`: **404/404**,
-- `LSF=FAIL`: **404/404**,
+- `M17`: **0/3401**,
+- `Viterbi=OK`: většina rámců měla očekávanou délku výstupu,
+- `CRC=FAIL`: všechny validované CRC,
+- `LSF=FAIL`: všechny přímé LSF,
 - medián Viterbi metric: **55**,
 - medián Softbit RMS: **0.848**,
 - medián SyncDistance: **4.356**,
 - medián RSSI při syncu: **−58.2 dBFS**.
 
-Medián RSSI je pod diagnostickým prahem a většina burstů vypadá jako
-false LSF ze šumu, nikoli jako potvrzené vysílání DM-1701. To je zásadní
-omezení historické datové sady.
+Historická datová sada tedy neobsahuje použitelný M17 stream, i po opravě
+offline NCO.
 
 Referenční srovnání na nejsilnějším capture (`005543`) dalo:
 
@@ -104,10 +104,15 @@ První skutečně selhávající kontrola je tedy **CRC**, ale již na vstupu
 Viterbi jsou data poškozená; nová i původní implementace produkují stejný
 Viterbi výstup. Nejde o chybu implementace C++ dekodéru.
 
+Novější řízené capture s firmware `preamble160` naopak obsahuje
+**1808 M17 rámců a 299 LSF OK**. Tím je potvrzeno, že DM-1701 je schopná
+vyslat dekódovatelný M17 stream a problém starší datové sady nebyl
+v dekodéru SX1255.
+
 ## Předběžné závěry
 
 - AFC C++ implementace byla porovnána s původním Go `FMDemodAFC`;
-  maximální rozdíl na reálném capture je v jednotkách setin Hz.
+  maximální rozdíl na reálném capture je **0.005 Hz**.
 - Samotná AFC tedy nevysvětluje neúspěšnou detekci.
 - Nejnižší SyncDistance rejected burstu je **3.33**.
 - SyncDistance je pod prahem, ale LSF neprojde CRC. To ukazuje na poškození symbolů/payloadu, nízkou úroveň nebo chybu vysílače, nikoli na příliš přísný sync threshold.

@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
+#include <numbers>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -219,6 +220,9 @@ int main(int argc, char** argv)
         });
 
     std::vector<ComplexFloat> block(4096);
+    double ncoPhase = 0.0;
+    const double ncoStep =
+        -2.0 * std::numbers::pi * 25000.0 / static_cast<double>(sampleRateSX1255);
     for (;;) {
         const std::size_t got = debug::readIQSamples(input, block.data(), block.size());
         if (got == 0)
@@ -228,8 +232,18 @@ int main(int argc, char** argv)
         rssiSum += currentRssi;
         ++rssiBlocks;
         for (std::size_t n = 0; n < got; ++n) {
-            const CD sample{static_cast<double>(block[n].i),
-                            static_cast<double>(block[n].q)};
+            double i = static_cast<double>(block[n].i);
+            double q = static_cast<double>(block[n].q);
+            if (!o.raw) {
+                const double c = std::cos(ncoPhase);
+                const double s = std::sin(ncoPhase);
+                const double ri = i * c - q * s;
+                const double rq = i * s + q * c;
+                i = ri;
+                q = rq;
+                ncoPhase += ncoStep;
+            }
+            const CD sample{i, q};
             ++samples;
             for (const CD dc : decimator.process(dcr.process(sample))) {
                 const double dem = afc.process(dc);

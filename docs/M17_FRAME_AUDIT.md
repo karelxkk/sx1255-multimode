@@ -55,3 +55,7 @@ metric/status, Golay, CRC a LSF pro každý rámec. Referenční skript
 porovná softbity, deinterleave, Viterbi výstup, Golay a CRC s původním
 Go `m17-gateway` a vygeneruje
 [M17_REFERENCE_COMPARISON.md](M17_REFERENCE_COMPARISON.md).
+
+Offline nástroje aplikují stejný 25kHz low-IF NCO jako živý
+`RadioFrontend`. Bez něj se výsledky na SX1255 IQ záznamech neshodují
+s live dekodérem.

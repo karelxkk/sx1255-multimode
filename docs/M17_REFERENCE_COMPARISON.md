@@ -8,18 +8,18 @@ a CRC; C++ strana poskytuje stejné mezivýsledky z běžného dekodéru.
 
 ## Souhrn
 
-- rámců: **15**
-- LSF / Packet / Stream / EOT: **15 / 0 / 0 / 0**
-- softbity shodné: **5/15**
-- deinterleaved shodné: **5/15**
-- Viterbi výstup shodný: **15/15**
-- Viterbi metric shodný: **15/15**
-- softbit neshod celkem: **16**, max |rozdíl|: **1**
-- softbit neshody bez změny Viterbi výstupu: **10**
-- Golay shodný: **15/15**
-- CRC shodný: **15/15**
-- LSF výsledek shodný: **15/15**
-- plně shodných rámců: **5/15**
+- rámců: **144**
+- LSF / Packet / Stream / EOT: **144 / 0 / 0 / 0**
+- softbity shodné: **55/144**
+- deinterleaved shodné: **55/144**
+- Viterbi výstup shodný: **144/144**
+- Viterbi metric shodný: **144/144**
+- softbit neshod celkem: **146**, max |rozdíl|: **1**
+- softbit neshody bez změny Viterbi výstupu: **89**
+- Golay shodný: **144/144**
+- CRC shodný: **144/144**
+- LSF výsledek shodný: **144/144**
+- plně shodných rámců: **55/144**
 
 ## První rozdílná vrstva
 
@@ -33,52 +33,42 @@ selhávající kontrolou je CRC. Numerické softbit rozdíly maximálně
 Rozhodující je vztah mezi vrstvami: pokud se softbity liší jen
 numericky a Viterbi výstup i metric jsou shodné, nejde o funkční
 rozdíl dekodéru. U zkoumaného capture je Viterbi výstup shodný ve
-**15/15** rámců.
+**144/144** rámců.
 
 ## První neshody
 
 | soubor | sample | typ | softbit | deinter | Viterbi | metric | Golay | CRC C++/Go |
 |---|---:|---|---|---|---|---|---|---|
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 121360 | LSF | False | False | True | True | True | FAIL/FAIL |
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 246365 | LSF | False | False | True | True | True | FAIL/FAIL |
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 957200 | LSF | False | False | True | True | True | FAIL/FAIL |
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 987425 | LSF | False | False | True | True | True | FAIL/FAIL |
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 1095345 | LSF | False | False | True | True | True | FAIL/FAIL |
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 1114225 | LSF | False | False | True | True | True | FAIL/FAIL |
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 1119610 | LSF | False | False | True | True | True | FAIL/FAIL |
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 1167010 | LSF | False | False | True | True | True | FAIL/FAIL |
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 1235435 | LSF | False | False | True | True | True | FAIL/FAIL |
-| datasets/m17/afc_audit/capture_20261014_005444.iq | 1348470 | LSF | False | False | True | True | True | FAIL/FAIL |
-
-## Nejsilnější reálný burst
-
-Nejsilnější kandidát v historických capture:
-
-- RSSI: **−23.87 dBFS**,
-- AFC: **−297.35 Hz**,
-- SyncDistance: **4.19**,
-- Softbit RMS: **0.859**,
-- Viterbi metric: **52**,
-- softbit neshoda proti Go: **1 hodnota, rozdíl 1 LSB**,
-- Viterbi výstup: **zcela shodný**,
-- CRC/LSF: **FAIL v obou implementacích**.
-
-Tedy ani při silném signálu nevzniká rozdíl mezi C++ a původním
-dekodérem. CRC selhává shodně a problém je již v obsahu softbitů před
-Viterbiho dekódováním, případně v samotném vysílaném M17 signálu.
-
-## Kontrolní čistý dataset
-
-Stejné srovnání na referenčním M17 TX IQ (`m17_tx_20261013.iq`):
-
-- rámců: **145**, z toho **134 M17** a **11 EOT**,
-- Viterbi výstup: **145/145 shodný**,
-- Viterbi metric: **145/145 shodný**,
-- Golay: **145/145 shodný**,
-- LSF/CRC: **2/2 shodné a OK**.
-
-Tím je ověřeno, že referenční srovnání umí potvrdit i úspěšnou cestu,
-nejen shodné selhání.
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 17130 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 50055 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 63565 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 76075 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 90255 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 103330 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 109055 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 160510 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 191665 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 199920 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 217805 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 221370 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 223475 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 227935 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 237330 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 253965 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 256925 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 264220 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 285840 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 297540 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 324510 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 327245 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 338315 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 339350 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 350600 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 367160 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 375940 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 407825 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 409410 | LSF | False | False | True | True | True | FAIL/FAIL |
+| datasets/m17/afc_audit/capture_20261014_005444.iq | 419115 | LSF | False | False | True | True | True | FAIL/FAIL |
 
 ## Poznámka k vrstvám
 

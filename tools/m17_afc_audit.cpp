@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -109,6 +110,9 @@ int main(int argc, char** argv)
     FMDemodAFC afc(basebandDCAvgCntSX1255, rxFastNSX1255, rxSlowNSX1255);
 
     std::vector<ComplexFloat> block(4096);
+    double ncoPhase = 0.0;
+    const double ncoStep =
+        -2.0 * std::numbers::pi * 25000.0 / static_cast<double>(sampleRateSX1255);
     std::uint64_t iqSamples = 0;
     std::uint64_t steps = 0;
     for (;;) {
@@ -116,8 +120,18 @@ int main(int argc, char** argv)
         if (got == 0)
             break;
         for (std::size_t n = 0; n < got; ++n) {
-            const CD sample{static_cast<double>(block[n].i),
-                            static_cast<double>(block[n].q)};
+            double i = static_cast<double>(block[n].i);
+            double q = static_cast<double>(block[n].q);
+            if (!options.raw) {
+                const double c = std::cos(ncoPhase);
+                const double s = std::sin(ncoPhase);
+                const double ri = i * c - q * s;
+                const double rq = i * s + q * c;
+                i = ri;
+                q = rq;
+                ncoPhase += ncoStep;
+            }
+            const CD sample{i, q};
             ++iqSamples;
             for (const CD dc : decimator.process(dcr.process(sample))) {
                 writeDouble(baseband, dc.re);
