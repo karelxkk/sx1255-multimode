@@ -7,3 +7,5 @@ compile_commands.json
 *.deb
 /datasets/**/*.iq
 /datasets/**/*.f64
+__pycache__/
+*.pyc
