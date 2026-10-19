@@ -113,6 +113,7 @@ GET /api/waterfall  historie spektra
 GET /api/status     stav, režim, RSSI, uptime a čítače detekcí
 GET /api/plugins    seznam pluginů s telemetrií
 GET /api/m17/diagnostics  AFC, SyncDistance a posledních 100 M17 pokusů
+POST /api/m17/diagnostics/reset  reset M17 decode čítačů
 GET /api/iq         stav IQ záznamu/přehrávání
 GET /api/health     stav subsystémů (watchdog)
 GET /api/system     paměť, CPU, vlákna, stav frontendu
