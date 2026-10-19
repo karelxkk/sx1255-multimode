@@ -98,6 +98,11 @@ public:
     // because most modes have nothing to clear.
     virtual void clearPendingDetection() {}
 
+    // Disable RX processing that must not run while a different standard owns
+    // the channel.  FM uses this to keep foreign-mode audio out of the
+    // SVXLink bridge.
+    virtual void setRxBlocked(bool) {}
+
     // Diagnostic detection counters are only meaningful for the mode that is
     // actually allowed to use the channel.  The dispatcher disables counting
     // for the non-owning plugins during an exclusive session, so FM seeing a

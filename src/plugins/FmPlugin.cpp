@@ -79,7 +79,7 @@ public:
         // monitoring (no FM session yet).  The dispatcher calls detect() both
         // in the idle monitoring phase and during an arbiter-only TX state
         // (ACTIVE_SVXLINK), so SVXLink always hears the receiver.
-        if (m_useSvxlink && m_bridge)
+        if (m_useSvxlink && m_bridge && !m_rxBlocked)
             m_bridge->pushRxIq(block.samples, block.count);
 
         const double rssi = blockRssiDb(block);
@@ -233,6 +233,11 @@ public:
         m_countDetections = on;
     }
 
+    void setRxBlocked(bool blocked) override
+    {
+        m_rxBlocked = blocked;
+    }
+
     PluginTelemetry telemetry() const override
     {
         PluginTelemetry t;
@@ -353,6 +358,7 @@ private:
     ITransmit* m_tx = nullptr;
     std::atomic<ITxArbiter*> m_arbiter{nullptr};
     bool m_useSvxlink = false;
+    bool m_rxBlocked = false;
     std::unique_ptr<fm::FmSvxlinkBridge> m_bridge;
     std::unique_ptr<fm::SqlPty> m_sqlPty;
 

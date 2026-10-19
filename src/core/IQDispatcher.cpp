@@ -45,6 +45,7 @@ void IQDispatcher::dispatch(const IQBlock& block)
             // the monitoring fan-out, but do not grant a new session.
             for (const auto& plugin : m_registry.plugins()) {
                 if (plugin) {
+                    plugin->setRxBlocked(false);
                     plugin->setDetectionCounting(true);
                     plugin->detect(block);
                 }
@@ -60,15 +61,28 @@ void IQDispatcher::dispatch(const IQBlock& block)
         // Dropping the session is enough; the next block grants it to the
         // winner again.
         bool higherWants = false;
+        bool m17Wants = false;
         for (const auto& plugin : m_registry.plugins()) {
             if (!plugin || plugin == owner)
                 continue;
+            plugin->setRxBlocked(true);
             plugin->setDetectionCounting(false);
             const Detection d = plugin->detect(block);
-            if (d.detected && plugin->priority() > owner->priority())
+            if (d.detected && plugin->priority() > owner->priority()) {
                 higherWants = true;
+                if (plugin->mode() == Mode::M17)
+                    m17Wants = true;
+            }
         }
+        owner->setRxBlocked(false);
         owner->setDetectionCounting(true);
+        // A valid M17 LSF is CRC-checked.  Release the old owner before it
+        // processes this block, so no M17 audio is forwarded as FM.
+        if (m17Wants) {
+            m_preemptBlocks = 0;
+            m_sessions.finishSession();
+            return;
+        }
         // The hand-over needs a confirmed detection: a single block of a stray
         // correlation from a digital detector must not cut an analogue session.
         m_preemptBlocks = higherWants ? m_preemptBlocks + 1 : 0;
@@ -89,6 +103,7 @@ void IQDispatcher::dispatch(const IQBlock& block)
     for (const auto& plugin : m_registry.plugins()) {
         if (!plugin)
             continue;
+        plugin->setRxBlocked(false);
         plugin->setDetectionCounting(true);
         reports.push_back({plugin, plugin->detect(block)});
     }
@@ -96,8 +111,10 @@ void IQDispatcher::dispatch(const IQBlock& block)
     IModePlugin* owner = m_sessions.evaluateDetections(reports, m_tx);
     if (owner) {
         for (const auto& plugin : m_registry.plugins()) {
-            if (plugin && plugin.get() != owner)
+            if (plugin && plugin.get() != owner) {
+                plugin->setRxBlocked(true);
                 plugin->clearPendingDetection();
+            }
         }
     }
 }
