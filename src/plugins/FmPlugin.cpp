@@ -75,13 +75,6 @@ public:
 
     Detection detect(const IQBlock& block) override
     {
-        // Keep the RF -> SVXLink audio path alive even while we are only
-        // monitoring (no FM session yet).  The dispatcher calls detect() both
-        // in the idle monitoring phase and during an arbiter-only TX state
-        // (ACTIVE_SVXLINK), so SVXLink always hears the receiver.
-        if (m_useSvxlink && m_bridge)
-            m_bridge->pushRxIq(block.samples, block.count);
-
         const double rssi = blockRssiDb(block);
         m_lastRssiDb = rssi;
 

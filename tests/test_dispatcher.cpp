@@ -68,11 +68,9 @@ int main()
         if (s2.state() != SessionManager::State::ActiveFm)
             return 8;
         highOnAir = true;
-        // Preemption is deliberately debounced: one stray higher-priority
-        // detection must not cut an FM session, so the dispatcher requires
-        // five consecutive confirming blocks before it drops the owner.
-        for (int i = 0; i < 5; ++i)
-            d2.dispatch(block);
+        // A valid M17 LSF is CRC-checked and preempts before the owner gets
+        // another block, so no M17 audio is forwarded as FM.
+        d2.dispatch(block);
         if (s2.state() != SessionManager::State::ReturnToIdle)
             return 9;
         d2.dispatch(block);                       // next block grants it to high
