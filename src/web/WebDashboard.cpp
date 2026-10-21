@@ -27,17 +27,8 @@ const std::string& dashboardHtml()
   .plugin { border:1px solid #21262d; border-radius:6px; padding:8px 10px; min-width:160px; }
   .plugin.active { border-color:#2ea043; }
   .plugin small { color:#8b949e; }
-  .plugin.m17-plugin { min-width:280px; }
-  .plugin-ber { margin-top:10px; padding:9px 12px; border-radius:8px;
-                border:1px solid #30363d; background:#0d1117; }
-  .plugin-ber small { display:block; margin-top:2px; }
-  .plugin-ber b { font:700 30px/1.1 ui-monospace,monospace; }
-  .plugin-ber.good { border-color:#238636; }
-  .plugin-ber.good b { color:#3fb950; }
-  .plugin-ber.warn { border-color:#9e6a03; }
-  .plugin-ber.warn b { color:#d29922; }
-  .plugin-ber.bad { border-color:#da3633; }
-  .plugin-ber.bad b { color:#f85149; }
+  #m17-panel { order:0; }
+  #plugins-panel { order:1; }
   .diag-table { width:100%; border-collapse:collapse; font:12px/1.35 ui-monospace,monospace; }
   .diag-table th, .diag-table td { padding:4px 6px; border-bottom:1px solid #21262d; text-align:right; }
   .diag-table th:first-child, .diag-table td:first-child { text-align:left; }
@@ -103,11 +94,11 @@ const std::string& dashboardHtml()
       <div class="cell"><b id="falsepos">-</b><span>false positives</span></div>
     </div>
   </div>
-  <div class="panel">
+  <div class="panel" id="plugins-panel">
     <h2>Pluginy</h2>
     <div id="plugins"></div>
   </div>
-  <div class="panel">
+  <div class="panel" id="m17-panel">
     <h2>M17 Diagnostics</h2>
     <div id="m17-ber-hero" class="ber-hero ber-unknown">
       <div>
@@ -263,25 +254,19 @@ async function refreshPlugins(){
   for (const p of list){
     const div = document.createElement('div');
     div.className = 'plugin' + (p.active ? ' active' : '');
-    if (p.mode === 'M17')
-      div.classList.add('m17-plugin');
     let t = '<b>' + p.name + '</b>';
     if (p.telemetry){
       t += '<br><small>';
       const k = Object.keys(p.telemetry);
+      let firstMetric = true;
       for (let i=0;i<k.length;i++){
-        if (i) t += ', ';
+        if (k[i].indexOf('ber') !== -1)
+          continue;
+        if (!firstMetric) t += ', ';
+        firstMetric = false;
         t += k[i] + '=' + fmtMetric(k[i], p.telemetry[k[i]]);
       }
       t += '</small>';
-      if (p.mode === 'M17'){
-        const last = p.telemetry.last_frame_ber_percent;
-        const avg = p.telemetry.average_ber_percent;
-        const ber = (typeof last === 'number' && Number.isFinite(last) && last >= 0) ? last : 0;
-        const state = ber < 2 ? 'good' : (ber < 5 ? 'warn' : 'bad');
-        t += '<div class="plugin-ber ' + state + '"><b>BER ' + fixed(ber, 2) +
-             ' %</b><small>poslední rámec · průměr ' + fixed(avg, 2) + ' %</small></div>';
-      }
     }
     div.innerHTML = t;
     box.appendChild(div);

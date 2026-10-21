@@ -35,8 +35,8 @@ Golay CRC LSF Frame Type Result
 Log se rotuje po 1 MB, tři zálohy.
 
 Dashboard zobrazuje BER jako velký samostatný ukazatel s barevným stavem
-a lištou. Stejný BER badge je také přímo na kartě M17 v panelu Pluginy,
-takže je viditelný bez scrollování k diagnostickému panelu. `last` je BER
+a lištou v panelu **M17 Diagnostics**, který je vizuálně umístěný před
+panelem **Pluginy**. V plugin kartách se BER už nezobrazuje. `last` je BER
 posledního **úspěšně dekódovaného M17 rámce**, `avg` je průměr z posledních
 100 úspěšných rámců. Odmítnuté false LSF z šumu se do hlavního BER
 nezačítají; zůstávají v tabulce kandidátů s výsledkem `Rejected`.
