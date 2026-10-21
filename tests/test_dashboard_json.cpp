@@ -133,13 +133,16 @@ int main()
         m17diag.find("\"average_ber_percent\"") == std::string::npos) {
         return 20;
     }
+    if (m17diag.find("\"last_frame_ber_percent\":0") == std::string::npos)
+        return 25;
     if (html.find("M17 Diagnostics") == std::string::npos)
         return 18;
     if (html.find("Reset M17 statistik") == std::string::npos)
         return 21;
     if (html.find("BER posledního rámce") == std::string::npos ||
         html.find("průměr 100 rámců") == std::string::npos ||
-        html.find("m17-ber-hero") == std::string::npos)
+        html.find("m17-ber-hero") == std::string::npos ||
+        html.find("plugin-ber") == std::string::npos)
         return 24;
     const std::string reset = httpRequest(
         18081, "POST", "/api/m17/diagnostics/reset");

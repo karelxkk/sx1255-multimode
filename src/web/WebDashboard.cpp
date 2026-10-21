@@ -27,6 +27,17 @@ const std::string& dashboardHtml()
   .plugin { border:1px solid #21262d; border-radius:6px; padding:8px 10px; min-width:160px; }
   .plugin.active { border-color:#2ea043; }
   .plugin small { color:#8b949e; }
+  .plugin.m17-plugin { min-width:280px; }
+  .plugin-ber { margin-top:10px; padding:9px 12px; border-radius:8px;
+                border:1px solid #30363d; background:#0d1117; }
+  .plugin-ber small { display:block; margin-top:2px; }
+  .plugin-ber b { font:700 30px/1.1 ui-monospace,monospace; }
+  .plugin-ber.good { border-color:#238636; }
+  .plugin-ber.good b { color:#3fb950; }
+  .plugin-ber.warn { border-color:#9e6a03; }
+  .plugin-ber.warn b { color:#d29922; }
+  .plugin-ber.bad { border-color:#da3633; }
+  .plugin-ber.bad b { color:#f85149; }
   .diag-table { width:100%; border-collapse:collapse; font:12px/1.35 ui-monospace,monospace; }
   .diag-table th, .diag-table td { padding:4px 6px; border-bottom:1px solid #21262d; text-align:right; }
   .diag-table th:first-child, .diag-table td:first-child { text-align:left; }
@@ -252,6 +263,8 @@ async function refreshPlugins(){
   for (const p of list){
     const div = document.createElement('div');
     div.className = 'plugin' + (p.active ? ' active' : '');
+    if (p.mode === 'M17')
+      div.classList.add('m17-plugin');
     let t = '<b>' + p.name + '</b>';
     if (p.telemetry){
       t += '<br><small>';
@@ -261,6 +274,14 @@ async function refreshPlugins(){
         t += k[i] + '=' + fmtMetric(k[i], p.telemetry[k[i]]);
       }
       t += '</small>';
+      if (p.mode === 'M17'){
+        const last = p.telemetry.last_frame_ber_percent;
+        const avg = p.telemetry.average_ber_percent;
+        const ber = (typeof last === 'number' && Number.isFinite(last) && last >= 0) ? last : 0;
+        const state = ber < 2 ? 'good' : (ber < 5 ? 'warn' : 'bad');
+        t += '<div class="plugin-ber ' + state + '"><b>BER ' + fixed(ber, 2) +
+             ' %</b><small>poslední rámec · průměr ' + fixed(avg, 2) + ' %</small></div>';
+      }
     }
     div.innerHTML = t;
     box.appendChild(div);
@@ -277,25 +298,19 @@ function fixed(value, digits){
 }
 function updateBerHero(last, average){
   const hero = $('m17-ber-hero');
-  const valid = typeof last === 'number' && Number.isFinite(last) && last >= 0;
+  const value = (typeof last === 'number' && Number.isFinite(last) && last >= 0) ? last : 0;
+  const averageValue = (typeof average === 'number' && Number.isFinite(average) && average >= 0)
+    ? average : 0;
   hero.classList.remove('ber-good', 'ber-warn', 'ber-bad', 'ber-unknown');
-  if (!valid){
-    hero.classList.add('ber-unknown');
-    $('m17-ber-big').textContent = '-';
-    $('m17-ber-average').textContent = '-';
-    $('m17-ber-state').textContent = 'čekám na rámec';
-    $('m17-ber-bar').style.width = '0%';
-    return;
-  }
   let cls = 'ber-bad';
   let text = 'kritický';
-  if (last < 2){ cls = 'ber-good'; text = 'výborný'; }
-  else if (last < 5){ cls = 'ber-warn'; text = 'použitelný'; }
+  if (value < 2){ cls = 'ber-good'; text = 'výborný'; }
+  else if (value < 5){ cls = 'ber-warn'; text = 'použitelný'; }
   hero.classList.add(cls);
-  $('m17-ber-big').textContent = fixed(last, 2);
-  $('m17-ber-average').textContent = fixed(average, 2);
+  $('m17-ber-big').textContent = fixed(value, 2);
+  $('m17-ber-average').textContent = fixed(averageValue, 2);
   $('m17-ber-state').textContent = text;
-  $('m17-ber-bar').style.width = Math.max(2, Math.min(100, last * 10)) + '%';
+  $('m17-ber-bar').style.width = (value === 0 ? 0 : Math.max(2, Math.min(100, value * 10))) + '%';
 }
 async function refreshM17Diagnostics(){
   const d = await getJSON('/api/m17/diagnostics');

@@ -524,15 +524,21 @@ public:
         t.metrics["rssi_at_sync"] = m_rssiAtSync;
         double berSum = 0.0;
         int berCount = 0;
+        double lastBer = 0.0;
         for (const FrameAuditEntry& entry : m_frameAudits) {
             if (entry.berPercent >= 0.0) {
                 berSum += entry.berPercent;
                 ++berCount;
             }
         }
+        for (auto it = m_frameAudits.rbegin(); it != m_frameAudits.rend(); ++it) {
+            if (it->berPercent >= 0.0) {
+                lastBer = it->berPercent;
+                break;
+            }
+        }
         t.metrics["ber_percent"] = m_decoder.currentBerPercent();
-        t.metrics["last_frame_ber_percent"] =
-            m_frameAudits.empty() ? 0.0 : m_frameAudits.back().berPercent;
+        t.metrics["last_frame_ber_percent"] = lastBer;
         t.metrics["average_ber_percent"] =
             berCount > 0 ? berSum / berCount : 0.0;
         const m17::LayerCountersSnapshot layers = m_decoder.layerCounters();
@@ -597,10 +603,17 @@ public:
         const m17::LayerCountersSnapshot layers = m_decoder.layerCounters();
         double berSum = 0.0;
         int berCount = 0;
+        double lastBer = 0.0;
         for (const FrameAuditEntry& entry : m_frameAudits) {
             if (entry.berPercent >= 0.0) {
                 berSum += entry.berPercent;
                 ++berCount;
+            }
+        }
+        for (auto it = m_frameAudits.rbegin(); it != m_frameAudits.rend(); ++it) {
+            if (it->berPercent >= 0.0) {
+                lastBer = it->berPercent;
+                break;
             }
         }
         std::ostringstream out;
@@ -614,8 +627,7 @@ public:
             << ",\"average_symbol_level\":" << m_averageSymbolLevel
             << ",\"rssi_at_sync\":" << m_rssiAtSync
             << ",\"ber_percent\":" << m_decoder.currentBerPercent()
-            << ",\"last_frame_ber_percent\":"
-            << (m_frameAudits.empty() ? 0.0 : m_frameAudits.back().berPercent)
+            << ",\"last_frame_ber_percent\":" << lastBer
             << ",\"average_ber_percent\":"
             << (berCount > 0 ? berSum / berCount : 0.0)
             << ",\"sync_detected\":" << layers.syncDetected
