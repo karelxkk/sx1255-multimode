@@ -137,7 +137,9 @@ int main()
         return 18;
     if (html.find("Reset M17 statistik") == std::string::npos)
         return 21;
-    if (html.find("BER last / avg") == std::string::npos)
+    if (html.find("BER posledního rámce") == std::string::npos ||
+        html.find("průměr 100 rámců") == std::string::npos ||
+        html.find("m17-ber-hero") == std::string::npos)
         return 24;
     const std::string reset = httpRequest(
         18081, "POST", "/api/m17/diagnostics/reset");

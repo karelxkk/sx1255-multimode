@@ -35,6 +35,37 @@ const std::string& dashboardHtml()
   .ok { color:#3fb950; } .bad { color:#f85149; }
   button { background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:5px 10px; cursor:pointer; }
   button:hover { border-color:#58a6ff; }
+  .ber-hero { display:grid; grid-template-columns:minmax(180px,260px) 1fr; gap:18px;
+              align-items:center; padding:16px 20px; margin-bottom:12px;
+              background:linear-gradient(135deg,#0d1117,#161b22);
+              border:2px solid #30363d; border-radius:10px; }
+  .ber-value { display:flex; align-items:baseline; gap:6px; line-height:1; }
+  .ber-value b { font:700 64px/1 ui-monospace,monospace; letter-spacing:-.04em; }
+  .ber-value span { font-size:22px; color:#8b949e; }
+  .ber-caption { margin-top:8px; color:#8b949e; font-weight:600;
+                 text-transform:uppercase; letter-spacing:.05em; }
+  .ber-side { display:grid; gap:8px; }
+  .ber-state { font-size:20px; font-weight:700; }
+  .ber-average { color:#c9d1d9; }
+  .ber-average b { font:700 22px/1 ui-monospace,monospace; }
+  .ber-meter { height:14px; border-radius:999px; overflow:hidden; background:#21262d;
+               border:1px solid #30363d; }
+  .ber-meter div { height:100%; width:0; transition:width .25s ease, background .25s ease; }
+  .ber-help { color:#8b949e; font-size:12px; }
+  .ber-good { border-color:#238636; }
+  .ber-good .ber-value b, .ber-good .ber-state { color:#3fb950; }
+  .ber-good .ber-meter div { background:#3fb950; }
+  .ber-warn { border-color:#9e6a03; }
+  .ber-warn .ber-value b, .ber-warn .ber-state { color:#d29922; }
+  .ber-warn .ber-meter div { background:#d29922; }
+  .ber-bad { border-color:#da3633; }
+  .ber-bad .ber-value b, .ber-bad .ber-state { color:#f85149; }
+  .ber-bad .ber-meter div { background:#f85149; }
+  .ber-unknown .ber-value b, .ber-unknown .ber-state { color:#8b949e; }
+  @media (max-width:620px) {
+    .ber-hero { grid-template-columns:1fr; }
+    .ber-value b { font-size:52px; }
+  }
 </style>
 </head>
 <body>
@@ -67,6 +98,18 @@ const std::string& dashboardHtml()
   </div>
   <div class="panel">
     <h2>M17 Diagnostics</h2>
+    <div id="m17-ber-hero" class="ber-hero ber-unknown">
+      <div>
+        <div class="ber-value"><b id="m17-ber-big">-</b><span>%</span></div>
+        <div class="ber-caption">BER posledního rámce</div>
+      </div>
+      <div class="ber-side">
+        <div id="m17-ber-state" class="ber-state">čekám na rámec</div>
+        <div class="ber-average">průměr 100 rámců: <b id="m17-ber-average">-</b> %</div>
+        <div class="ber-meter"><div id="m17-ber-bar"></div></div>
+        <div class="ber-help">Kanálové chyby před FEC. Nižší hodnota je lepší.</div>
+      </div>
+    </div>
     <div class="grid">
       <div class="cell"><b id="m17-afc">-</b><span>AFC correction [Hz]</span></div>
       <div class="cell"><b id="m17-distance">-</b><span>sync distance</span></div>
@@ -80,7 +123,6 @@ const std::string& dashboardHtml()
       <div class="cell"><b id="m17-golay">-</b><span>Golay ok / fail</span></div>
       <div class="cell"><b id="m17-viterbi">-</b><span>Viterbi ok / fail</span></div>
       <div class="cell"><b id="m17-frame">-</b><span>frame ok / fail</span></div>
-      <div class="cell"><b id="m17-ber">-</b><span>BER last / avg [%]</span></div>
     </div>
     <div style="height:8px"></div>
     <button id="m17-reset" type="button">Reset M17 statistik</button>
@@ -233,6 +275,28 @@ async function refreshIq(){
 function fixed(value, digits){
   return (typeof value === 'number' && Number.isFinite(value)) ? value.toFixed(digits) : '-';
 }
+function updateBerHero(last, average){
+  const hero = $('m17-ber-hero');
+  const valid = typeof last === 'number' && Number.isFinite(last) && last >= 0;
+  hero.classList.remove('ber-good', 'ber-warn', 'ber-bad', 'ber-unknown');
+  if (!valid){
+    hero.classList.add('ber-unknown');
+    $('m17-ber-big').textContent = '-';
+    $('m17-ber-average').textContent = '-';
+    $('m17-ber-state').textContent = 'čekám na rámec';
+    $('m17-ber-bar').style.width = '0%';
+    return;
+  }
+  let cls = 'ber-bad';
+  let text = 'kritický';
+  if (last < 2){ cls = 'ber-good'; text = 'výborný'; }
+  else if (last < 5){ cls = 'ber-warn'; text = 'použitelný'; }
+  hero.classList.add(cls);
+  $('m17-ber-big').textContent = fixed(last, 2);
+  $('m17-ber-average').textContent = fixed(average, 2);
+  $('m17-ber-state').textContent = text;
+  $('m17-ber-bar').style.width = Math.max(2, Math.min(100, last * 10)) + '%';
+}
 async function refreshM17Diagnostics(){
   const d = await getJSON('/api/m17/diagnostics');
   if (!d || d.error) return;
@@ -248,7 +312,7 @@ async function refreshM17Diagnostics(){
   $('m17-golay').textContent = String(d.golay_ok || 0) + ' / ' + String(d.golay_fail || 0);
   $('m17-viterbi').textContent = String(d.viterbi_ok || 0) + ' / ' + String(d.viterbi_fail || 0);
   $('m17-frame').textContent = String(d.frame_ok || 0) + ' / ' + String(d.frame_fail || 0);
-  $('m17-ber').textContent = fixed(d.last_frame_ber_percent, 2) + ' / ' + fixed(d.average_ber_percent, 2);
+  updateBerHero(d.last_frame_ber_percent, d.average_ber_percent);
   const body = $('m17-candidates');
   body.innerHTML = '';
   const rows = (d.candidates || []).slice().reverse();

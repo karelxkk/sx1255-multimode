@@ -34,9 +34,10 @@ Golay CRC LSF Frame Type Result
 
 Log se rotuje po 1 MB, tři zálohy.
 
-Dashboard zobrazuje `BER last / avg [%]`. `last` je BER posledního
-dekódovaného rámce, `avg` je průměr z posledních 100 rámců. Pro LSF
-a packet se počítá z 368 kanálových bitů, pro stream z 272 bitů.
+Dashboard zobrazuje BER jako velký samostatný ukazatel s barevným stavem
+a lištou. `last` je BER posledního dekódovaného rámce, `avg` je průměr
+z posledních 100 rámců. Pro LSF a packet se počítá z 368 kanálových bitů,
+pro stream z 272 bitů.
 
 Na neúspěšných framech se do `audit_directory` ukládá
 `softbit_stats.json` s histogramem 16 binů, saturací a podbuzením.
