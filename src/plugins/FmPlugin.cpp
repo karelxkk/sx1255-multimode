@@ -11,6 +11,8 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace sx1255 {
@@ -75,15 +77,34 @@ public:
 
     Detection detect(const IQBlock& block) override
     {
-        // Keep the RF -> SVXLink audio path alive even while we are only
-        // monitoring (no FM session yet).  The dispatcher calls detect() both
-        // in the idle monitoring phase and during an arbiter-only TX state
-        // (ACTIVE_SVXLINK), so SVXLink always hears the receiver.
-        if (m_useSvxlink && m_bridge && !m_rxBlocked)
-            m_bridge->pushRxIq(block.samples, block.count);
-
         const double rssi = blockRssiDb(block);
         m_lastRssiDb = rssi;
+        const bool carrier = rssi >= m_config.rssiSquelchDb;
+
+        // Keep RF -> SVXLink alive during monitoring and during SVXLink TX.
+        // Only a digital mode that owns/claims the current block suppresses
+        // the FM audio feed.
+        if (m_useSvxlink && m_bridge && !m_rxBlocked) {
+            m_bridge->pushRxIq(block.samples, block.count);
+            const auto now = std::chrono::steady_clock::now();
+            if (carrier &&
+                (m_lastGateLog == std::chrono::steady_clock::time_point{} ||
+                 now - m_lastGateLog > std::chrono::seconds(1))) {
+                m_lastGateLog = now;
+                std::fprintf(stderr,
+                             "FM ACCEPT reason=%s rssi=%.1f\n",
+                             m_rxBlockReason.c_str(), rssi);
+            }
+        } else if (m_useSvxlink && m_bridge && m_rxBlocked && carrier) {
+            const auto now = std::chrono::steady_clock::now();
+            if (m_lastGateLog == std::chrono::steady_clock::time_point{} ||
+                now - m_lastGateLog > std::chrono::seconds(1)) {
+                m_lastGateLog = now;
+                std::fprintf(stderr,
+                             "FM REJECT reason=%s rssi=%.1f\n",
+                             m_rxBlockReason.c_str(), rssi);
+            }
+        }
 
         // The carrier must hold for a while before FM claims the channel: the
         // digital modes see the same carrier and they have higher priority, so
@@ -100,10 +121,20 @@ public:
             std::clamp(0.5 + (rssi - m_config.rssiSquelchDb) / 20.0, 0.0, 1.0));
 
         const auto now = std::chrono::steady_clock::now();
-        if (rssi >= m_config.rssiSquelchDb &&
+        // During SVXLink TX there is no local FM session owner, but a renewed
+        // local analogue carrier must still open SVXLink's squelch so its RX
+        // audio reaches the bridge.  Digital modes set m_rxBlocked and take
+        // the other branch, keeping their audio out of the FM bridge.
+        if (m_useSvxlink && !m_rxBlocked &&
+            m_rxBlockReason == "svxlink_tx_active") {
+            driveSql(carrier, now);
+        }
+        if (carrier &&
             now - m_lastRssiLog > std::chrono::seconds(2)) {
             m_lastRssiLog = now;
-            std::fprintf(stderr, "FM squelch: carrier, RSSI %.1f dB\n", rssi);
+            std::fprintf(stderr,
+                         "FM DETECT reason=%s rssi=%.1f detected=%d\n",
+                         m_rxBlockReason.c_str(), rssi, detected ? 1 : 0);
         }
 
         if (detected) {
@@ -233,9 +264,14 @@ public:
         m_countDetections = on;
     }
 
-    void setRxBlocked(bool blocked) override
+    void setRxBlocked(bool blocked, std::string_view reason) override
     {
         m_rxBlocked = blocked;
+        m_rxBlockReason = std::string(reason);
+        if (blocked && m_sqlPty && m_sqlOpen) {
+            m_sqlPty->set(false);
+            m_sqlOpen = false;
+        }
     }
 
     PluginTelemetry telemetry() const override
@@ -247,6 +283,8 @@ public:
         t.metrics["rssi_squelch_db"] = m_config.rssiSquelchDb;
         t.metrics["squelch_open"] = m_sqlOpen ? 1.0 : 0.0;
         t.metrics["confidence"] = m_lastConfidence;
+        t.metrics["rx_blocked"] = m_rxBlocked ? 1.0 : 0.0;
+        t.strings["rx_block_reason"] = m_rxBlockReason;
         return t;
     }
 
@@ -359,6 +397,7 @@ private:
     std::atomic<ITxArbiter*> m_arbiter{nullptr};
     bool m_useSvxlink = false;
     bool m_rxBlocked = false;
+    std::string m_rxBlockReason = "other";
     std::unique_ptr<fm::FmSvxlinkBridge> m_bridge;
     std::unique_ptr<fm::SqlPty> m_sqlPty;
 
@@ -377,6 +416,7 @@ private:
     float m_lastConfidence = 0.0F;
     double m_lastRssiDb = -120.0;
     std::chrono::steady_clock::time_point m_lastRssiLog{};
+    std::chrono::steady_clock::time_point m_lastGateLog{};
     std::uint64_t m_confirmSamples = 0;
     std::uint64_t m_confirmSamplesNeeded = 87500;
     bool m_countDetections = true;

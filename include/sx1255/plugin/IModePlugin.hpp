@@ -106,7 +106,7 @@ public:
     // Disable RX processing that must not run while a different standard owns
     // the channel.  FM uses this to keep foreign-mode audio out of the
     // SVXLink bridge.
-    virtual void setRxBlocked(bool) {}
+    virtual void setRxBlocked(bool, std::string_view = "other") {}
 
     // Diagnostic detection counters are only meaningful for the mode that is
     // actually allowed to use the channel.  The dispatcher disables counting

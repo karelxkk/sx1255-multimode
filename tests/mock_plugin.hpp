@@ -59,9 +59,10 @@ public:
         active = false;
     }
 
-    void setRxBlocked(bool blocked) override
+    void setRxBlocked(bool blocked, std::string_view reason) override
     {
         rxBlocked = blocked;
+        rxBlockReason = std::string(reason);
     }
 
     std::string m_id;
@@ -71,6 +72,7 @@ public:
     bool processResult = true;
     bool active = false;
     bool rxBlocked = false;
+    std::string rxBlockReason;
     SessionContext lastContext;
     Log log;
 };

@@ -177,6 +177,7 @@ docs/                    architektura, plugin API, UML diagramy
 - [M17 / DM-1701 AFC a SyncDistance analýza](docs/M17_DM1701_ANALYSIS.md)
 - [M17 frame quality audit](docs/M17_FRAME_AUDIT.md)
 - [M17 reference comparison](docs/M17_REFERENCE_COMPARISON.md)
+- [Audit FM RX během SVXLink TX](docs/FM_SVXLINK_RX_AUDIT.md)
 - [SX1255 hardware frontend](docs/SX1255_HARDWARE.md)
 - [Validace multimódové arbitráže](docs/MULTIMODE_VALIDATION.md)
 - [IQ capture & replay](docs/IQ_CAPTURE.md)

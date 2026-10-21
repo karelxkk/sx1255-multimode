@@ -90,11 +90,11 @@ int main()
     if (sessions.state() != SessionManager::State::ReturnToIdle)
         return 7;
 
-    // ACTIVE_SVXLINK has no plugin owner.  Keep M17 detection alive so a
-    // local M17 call can be granted after the network PTT ends, but never feed
-    // the local RX block to the FM/SVXLink bridge in the meantime.
+    // ACTIVE_SVXLINK has no plugin owner.  Local FM RX must still be fed to
+    // SVXLink while the network owns TX; only a digital detection suppresses
+    // that feed.  M17 detection stays alive for a future local session.
     {
-        bool m17OnAir = true;
+        bool m17OnAir = false;
         auto netFm = std::make_shared<test::MockPlugin>(
             "net-fm", Mode::FM, 10,
             [](const IQBlock&) { return Detection{false, 0.0F}; });
@@ -115,10 +115,17 @@ int main()
         netDispatcher.dispatch(block);
         if (netSessions.state() != SessionManager::State::ActiveSvxlink)
             return 25;
-        if (netFm->log.detectsWhileBlocked != 1)
+        if (netFm->log.detectsWhileBlocked != 0 ||
+            netFm->rxBlockReason != "svxlink_tx_active")
             return 26;
         if (netM17->log.detects != 1 || netM17->log.starts != 0)
             return 27;
+
+        m17OnAir = true;
+        netDispatcher.dispatch(block);
+        if (netFm->log.detectsWhileBlocked != 1 ||
+            netFm->rxBlockReason != "session_busy")
+            return 31;
 
         netSessions.releaseTx();
         m17OnAir = false;
@@ -133,6 +140,34 @@ int main()
             return 29;
         if (netM17->log.starts != 1)
             return 30;
+    }
+
+    // During M17 network TX, local FM RX is blocked for the different reason
+    // "tx_locked"; the M17 detector itself remains active.
+    {
+        auto netFm = std::make_shared<test::MockPlugin>(
+            "net-fm-2", Mode::FM, 10,
+            [](const IQBlock&) { return Detection{false, 0.0F}; });
+        auto netM17 = std::make_shared<test::MockPlugin>(
+            "net-m17-2", Mode::M17, 30,
+            [](const IQBlock&) { return Detection{false, 0.0F}; });
+        PluginRegistry netRegistry;
+        netRegistry.registerPlugin(netFm);
+        netRegistry.registerPlugin(netM17);
+        SessionManager netSessions(SessionManager::Settings{120000ms, 0ms});
+        netSessions.start();
+        netSessions.setPreferredNetworkMode(Mode::M17);
+        if (!netSessions.acquireTx(Mode::M17))
+            return 32;
+        IQDispatcher netDispatcher(netRegistry, netSessions, nullptr);
+        netDispatcher.dispatch(block);
+        if (netSessions.state() != SessionManager::State::ActiveM17Network ||
+            netFm->log.detectsWhileBlocked != 1 ||
+            netFm->rxBlockReason != "tx_locked" ||
+            netM17->log.detects != 1) {
+            return 33;
+        }
+        netSessions.releaseTx();
     }
 
     return 0;

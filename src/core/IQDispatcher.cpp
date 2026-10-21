@@ -41,18 +41,34 @@ void IQDispatcher::dispatch(const IQBlock& block)
         auto owner = m_sessions.owner();
         if (!owner) {
             // ACTIVE_SVXLINK / ACTIVE_M17_NETWORK: the arbiter holds TX but no
-            // plugin owns a session.  The RX path must stay alive so the FM
-            // plugin can keep feeding the SVXLink bridge (RF -> SVXLink).  Run
-            // the monitoring fan-out, but do not grant a new session.
-            for (const auto& plugin : m_registry.plugins()) {
+            // plugin owns a session.  Keep monitoring, but do not grant a new
+            // local session while the network owns TX.  A local FM receiver
+            // may still feed SVXLink unless a digital mode is present on this
+            // block; otherwise M17/D-Star audio would leak into the FM bridge.
+            auto plugins = m_registry.plugins();
+            const auto networkState = m_sessions.state();
+            std::stable_sort(plugins.begin(), plugins.end(),
+                             [](const auto& a, const auto& b) {
+                                 return a->priority() > b->priority();
+                             });
+            bool digitalDetected = false;
+            for (const auto& plugin : plugins) {
                 if (plugin) {
-                    // A network source owns the RF transmitter here.  Keep
-                    // decoding local modes, but do not feed local RX audio to
-                    // SVXLink: an M17/D-Star transmission could otherwise be
-                    // forwarded as FM while it waits for the network TX to end.
-                    plugin->setRxBlocked(plugin->mode() == Mode::FM);
+                    if (plugin->mode() == Mode::FM) {
+                        const bool digitalTx =
+                            networkState == SessionManager::State::ActiveM17Network;
+                        const bool blocked = digitalTx || digitalDetected;
+                        const char* reason = digitalTx
+                            ? "tx_locked"
+                            : (digitalDetected ? "session_busy" : "svxlink_tx_active");
+                        plugin->setRxBlocked(blocked, reason);
+                    } else {
+                        plugin->setRxBlocked(false, "other");
+                    }
                     plugin->setDetectionCounting(true);
-                    plugin->detect(block);
+                    const Detection detection = plugin->detect(block);
+                    if (detection.detected && plugin->mode() != Mode::FM)
+                        digitalDetected = true;
                 }
             }
             return;
@@ -70,7 +86,8 @@ void IQDispatcher::dispatch(const IQBlock& block)
         for (const auto& plugin : m_registry.plugins()) {
             if (!plugin || plugin == owner)
                 continue;
-            plugin->setRxBlocked(true);
+            plugin->setRxBlocked(true,
+                plugin->mode() == Mode::FM ? "session_busy" : "other");
             plugin->setDetectionCounting(false);
             const Detection d = plugin->detect(block);
             if (d.detected && plugin->priority() > owner->priority()) {
@@ -79,7 +96,7 @@ void IQDispatcher::dispatch(const IQBlock& block)
                     m17Wants = true;
             }
         }
-        owner->setRxBlocked(false);
+        owner->setRxBlocked(false, "other");
         owner->setDetectionCounting(true);
         // A valid M17 LSF is CRC-checked.  Release the old owner before it
         // processes this block, so no M17 audio is forwarded as FM.
@@ -119,7 +136,8 @@ void IQDispatcher::dispatch(const IQBlock& block)
     for (const auto& plugin : plugins) {
         if (!plugin)
             continue;
-        plugin->setRxBlocked(plugin->mode() == Mode::FM && digitalDetected);
+        const bool blocked = plugin->mode() == Mode::FM && digitalDetected;
+        plugin->setRxBlocked(blocked, blocked ? "session_busy" : "other");
         plugin->setDetectionCounting(true);
         const Detection detection = plugin->detect(block);
         if (detection.detected && plugin->mode() != Mode::FM)
@@ -131,7 +149,7 @@ void IQDispatcher::dispatch(const IQBlock& block)
     if (owner) {
         for (const auto& plugin : m_registry.plugins()) {
             if (plugin && plugin.get() != owner) {
-                plugin->setRxBlocked(true);
+                plugin->setRxBlocked(true, "session_busy");
                 plugin->clearPendingDetection();
             }
         }
