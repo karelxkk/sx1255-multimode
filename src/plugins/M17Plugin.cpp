@@ -526,18 +526,19 @@ public:
         int berCount = 0;
         double lastBer = 0.0;
         for (const FrameAuditEntry& entry : m_frameAudits) {
-            if (entry.berPercent >= 0.0) {
+            if (entry.result == "M17" && entry.berPercent >= 0.0) {
                 berSum += entry.berPercent;
                 ++berCount;
             }
         }
         for (auto it = m_frameAudits.rbegin(); it != m_frameAudits.rend(); ++it) {
-            if (it->berPercent >= 0.0) {
+            if (it->result == "M17" && it->berPercent >= 0.0) {
                 lastBer = it->berPercent;
                 break;
             }
         }
-        t.metrics["ber_percent"] = m_decoder.currentBerPercent();
+        t.metrics["ber_percent"] = lastBer;
+        t.metrics["current_ber_percent"] = m_decoder.currentBerPercent();
         t.metrics["last_frame_ber_percent"] = lastBer;
         t.metrics["average_ber_percent"] =
             berCount > 0 ? berSum / berCount : 0.0;
@@ -605,13 +606,13 @@ public:
         int berCount = 0;
         double lastBer = 0.0;
         for (const FrameAuditEntry& entry : m_frameAudits) {
-            if (entry.berPercent >= 0.0) {
+            if (entry.result == "M17" && entry.berPercent >= 0.0) {
                 berSum += entry.berPercent;
                 ++berCount;
             }
         }
         for (auto it = m_frameAudits.rbegin(); it != m_frameAudits.rend(); ++it) {
-            if (it->berPercent >= 0.0) {
+            if (it->result == "M17" && it->berPercent >= 0.0) {
                 lastBer = it->berPercent;
                 break;
             }
@@ -626,7 +627,8 @@ public:
             << ",\"sync_misses\":" << m_syncMisses
             << ",\"average_symbol_level\":" << m_averageSymbolLevel
             << ",\"rssi_at_sync\":" << m_rssiAtSync
-            << ",\"ber_percent\":" << m_decoder.currentBerPercent()
+            << ",\"ber_percent\":" << lastBer
+            << ",\"current_ber_percent\":" << m_decoder.currentBerPercent()
             << ",\"last_frame_ber_percent\":" << lastBer
             << ",\"average_ber_percent\":"
             << (berCount > 0 ? berSum / berCount : 0.0)
