@@ -2,10 +2,19 @@
 
 Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
-## [Nepublikováno]
+## [1.0.0-rc6] — 2026-10-23
 
 ### Přidáno
 
+- Volitelný `power_save` režim pro klidové `DETECTING`: pod RSSI prahem
+  pozastaví plugin detektory, ale zachová IQ příjem, FFT a waterfall.
+  Probuzení nastane okamžitě dalším blokem nad horním prahem. Na cíli snížil
+  měřenou zátěž z přibližně 52–56 % na 16–17 % jednoho CPU jádra.
+- 90° low-IF NCO používá přímou výměnu I/Q složek bez trigonometrie.
+- M17 dashboard zobrazuje symbol MER jako hlavní ukazatel kvality živého
+  4FSK streamu. Ověřená BER LSF/paketu je zachovaná jako doplňkový údaj.
+  MER se exportuje v `/api/plugins`, `/api/m17/diagnostics`, rámcovém auditu
+  a má klouzavý průměr z posledních 100 platných M17 rámců.
 - M17 frame decoder telemetrie po vrstvách: `sync_detected`, LSF, CRC,
   Golay, Viterbi a frame ok/fail, včetně reset API.
 - Rotovaný `m17_frame_audit.log` s RSSI, AFC, SyncDistance, Softbit RMS,
@@ -43,6 +52,20 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Opraveno
 
+- M17 synchronizátor už v klidu nevrací odmítnutý falešný stream sync do
+  bufferu, takže se nemůže zacyklit a zastavit RX/FFT. Uvnitř skutečného
+  streamu se naopak celé okno obnoví, aby se neztratil hlasový rámec.
+- M17 stream: falešné LSF/packet syncy uvnitř náhodného hlasového payloadu
+  už nejsou označovány jako platné M17 rámce. Při odmítnutí synchronizátor
+  uvnitř již otevřeného streamu vrátí celé spotřebované okno, krátce
+  potlačí pouze stejný typ kandidáta a pokračuje hledáním skutečného stream
+  syncu. V klidu se okno nevrací, aby se stejný šumový sync nevybíral
+  donekonečna a neblokoval RX/FFT. Na 141s IQ záznamu DM-1701 to odstranilo
+  všech 17 chybějících stream rámců (0 mezer) a zvýšilo počet dekódovaných
+  stream rámců z 2326 na 2398.
+- M17 dashboard BER se počítá pouze z LSF/packet rámců s platným CRC.
+  Falešný LSF uvnitř streamu už nemůže skokově zvýšit hlavní BER ani zůstat
+  zobrazený po zbytek relace.
 - M17 packet decoder: první (a případně jediný) packet frame po LSF se
   špatně skládal kvůli přetečení `uint8_t` při výpočtu offsetu; nyní se
   `0xff + 1` správně zabalí na 0.

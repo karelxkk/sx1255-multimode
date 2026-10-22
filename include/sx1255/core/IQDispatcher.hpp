@@ -2,6 +2,7 @@
 
 #include "sx1255/Types.hpp"
 
+#include <atomic>
 #include <functional>
 
 namespace sx1255 {
@@ -34,6 +35,13 @@ public:
     // Used by the spectrum monitor and automatic capture; must not block.
     void setIqSink(std::function<void(const ComplexFloat*, std::size_t)> sink);
 
+    // Pause plugin detection when the receiver is otherwise idle and the
+    // measured IQ power is below the sleep threshold.  The frontend keeps
+    // reading IQ, so FFT/waterfall continue and a later block can wake the
+    // detectors immediately.
+    void setIdlePowerSave(bool enabled, double sleepBelowDbfs, double wakeAboveDbfs);
+    bool idlePowerSaveActive() const { return m_idlePowerSave.load(); }
+
     // Process one IQ block.  Not thread-safe: call from the frontend thread.
     void dispatch(const IQBlock& block);
 
@@ -51,6 +59,11 @@ private:
     static constexpr int kPreemptBlocks = 5;
     int m_preemptBlocks = 0;
     std::uint64_t   m_blocks = 0;
+
+    bool   m_powerSaveEnabled = false;
+    double m_powerSaveSleepDb = -57.0;
+    double m_powerSaveWakeDb = -55.0;
+    std::atomic<bool> m_idlePowerSave{false};
 };
 
 }  // namespace sx1255

@@ -159,8 +159,12 @@ bool analyzeFile(const std::string& path, bool raw,
     SampleToSymbol s2s(std::vector<double>(rrcTaps5.begin(), rrcTaps5.end()),
                        rxScalingCoeffSX1255);
     bool lsfRejected = false;
+    bool frameRejected = false;
     Decoder::Callbacks callbacks;
     callbacks.onLSFBadCRC = [&](const LSF&, double) { lsfRejected = true; };
+    callbacks.onFrameDropped = [&](std::uint16_t, const char*) {
+        frameRejected = true;
+    };
     Decoder decoder(std::move(callbacks));
 
     double currentRssi = -120.0;
@@ -169,12 +173,17 @@ bool analyzeFile(const std::string& path, bool raw,
     M17Synchronizer synchronizer(5, [&](std::uint16_t typ,
                                         const std::vector<SoftBit>& softBits) {
         const SyncEvaluation evaluation = syncPtr->lastEvaluation();
+        const std::uint16_t syncedBefore = decoder.syncedType();
+        frameRejected = false;
         decoder.decodeFrame(typ, softBits);
         const FrameAudit audit = decoder.lastFrameAudit();
         if (lsfRejected) {
-            syncPtr->retract();
+            syncPtr->retract(syncedBefore != 0);
             lsfRejected = false;
+        } else if (frameRejected && syncedBefore != 0) {
+            syncPtr->retract(true);
         }
+        frameRejected = false;
         syncPtr->setExpectedType(decoder.syncedType() == PacketSync ? PacketSync : 0);
 
         FrameRecord record;

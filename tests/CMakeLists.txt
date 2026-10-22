@@ -56,6 +56,14 @@ add_executable(test_m17_loopback test_m17_loopback.cpp)
 target_link_libraries(test_m17_loopback PRIVATE sx1255_core)
 add_test(NAME m17_loopback COMMAND test_m17_loopback)
 
+add_executable(test_m17_false_lsf test_m17_false_lsf.cpp)
+target_link_libraries(test_m17_false_lsf PRIVATE sx1255_core)
+add_test(NAME m17_false_lsf COMMAND test_m17_false_lsf)
+
+add_executable(test_m17_ber_false_lsf test_m17_ber_false_lsf.cpp)
+target_link_libraries(test_m17_ber_false_lsf PRIVATE sx1255_core)
+add_test(NAME m17_ber_false_lsf COMMAND test_m17_ber_false_lsf)
+
 add_executable(test_m17_packet_loopback test_m17_packet_loopback.cpp)
 target_link_libraries(test_m17_packet_loopback PRIVATE sx1255_core)
 add_test(NAME m17_packet_loopback COMMAND test_m17_packet_loopback)

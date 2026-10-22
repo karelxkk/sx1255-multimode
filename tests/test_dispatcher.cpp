@@ -170,5 +170,44 @@ int main()
         netSessions.releaseTx();
     }
 
+    // Idle power save: below the sleep threshold no plugin detector runs.
+    // The first block above the wake threshold resumes detection immediately.
+    {
+        auto quietM17 = std::make_shared<test::MockPlugin>(
+            "quiet-m17", Mode::M17, 30,
+            [](const IQBlock&) { return Detection{true, 1.0F}; });
+        PluginRegistry quietRegistry;
+        quietRegistry.registerPlugin(quietM17);
+        SessionManager quietSessions(SessionManager::Settings{120000ms, 0ms});
+        quietSessions.start();
+        IQDispatcher quietDispatcher(quietRegistry, quietSessions, nullptr);
+        quietDispatcher.setIdlePowerSave(true, -57.0, -55.0);
+
+        const ComplexFloat lowSample{0.0005F, 0.0F};
+        const IQBlock lowBlock{0, &lowSample, 1, 125000.0};
+        quietDispatcher.dispatch(lowBlock);
+        if (!quietDispatcher.idlePowerSaveActive() ||
+            quietM17->log.detects != 0) {
+            return 34;
+        }
+
+        const ComplexFloat hysteresisSample{0.0013F, 0.0F};
+        const IQBlock hysteresisBlock{1, &hysteresisSample, 1, 125000.0};
+        quietDispatcher.dispatch(hysteresisBlock);
+        if (!quietDispatcher.idlePowerSaveActive() ||
+            quietM17->log.detects != 0) {
+            return 35;
+        }
+
+        const ComplexFloat loudSample{0.0025F, 0.0F};
+        const IQBlock loudBlock{2, &loudSample, 1, 125000.0};
+        quietDispatcher.dispatch(loudBlock);
+        if (quietDispatcher.idlePowerSaveActive() ||
+            quietM17->log.detects != 1 ||
+            quietSessions.state() != SessionManager::State::ActiveM17) {
+            return 36;
+        }
+    }
+
     return 0;
 }

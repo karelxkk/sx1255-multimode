@@ -178,6 +178,16 @@ struct NetworkConfig {
     std::string mode = "auto";   // "auto" | "fm" | "dstar" | "m17"
 };
 
+struct PowerSaveConfig {
+    // Pause plugin detection while no session is active and the received IQ
+    // power stays below sleepBelowDbfs.  IQ capture, FFT and waterfall keep
+    // running.  A block above wakeAboveDbfs resumes normal detection
+    // immediately.
+    bool   enabled = false;
+    double sleepBelowDbfs = -57.0;
+    double wakeAboveDbfs = -55.0;
+};
+
 struct RecordingConfig {
     bool        enabled = false;
     std::string file    = "capture.iq";
@@ -217,6 +227,7 @@ struct Config {
     ReplayConfig    replay;
     AutomaticCaptureConfig automaticCapture;
     SpectrumConfig         spectrum;
+    PowerSaveConfig        powerSave;
 };
 
 // Parse the YAML-subset configuration file.  Throws std::runtime_error with a

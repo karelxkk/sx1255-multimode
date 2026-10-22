@@ -86,6 +86,7 @@ int main()
     server.setSystemProvider([] {
         return std::string("{\"memory_rss_kb\":123,\"cpu_seconds\":1.5,\"threads\":4,\"frontend_state\":\"running\"}");
     });
+    server.setPowerSaveProvider([] { return true; });
 
     if (!server.start())
         return 1;
@@ -95,6 +96,8 @@ int main()
         return 2;
     if (html.find("spectrum") == std::string::npos)
         return 3;
+    if (html.find("id=\"powersave\"") == std::string::npos)
+        return 27;
 
     const std::string spectrum = httpGet(18081, "/api/spectrum");
     if (spectrum.find("\"fft_size\":4096") == std::string::npos)
@@ -133,15 +136,20 @@ int main()
         m17diag.find("\"average_ber_percent\"") == std::string::npos) {
         return 20;
     }
+    if (m17diag.find("\"last_frame_mer_db\"") == std::string::npos ||
+        m17diag.find("\"average_mer_db\"") == std::string::npos) {
+        return 26;
+    }
     if (m17diag.find("\"last_frame_ber_percent\":0") == std::string::npos)
         return 25;
     if (html.find("M17 Diagnostics") == std::string::npos)
         return 18;
     if (html.find("Reset M17 statistik") == std::string::npos)
         return 21;
-    if (html.find("BER posledního rámce") == std::string::npos ||
-        html.find("průměr 100 rámců") == std::string::npos ||
-        html.find("m17-ber-hero") == std::string::npos ||
+    if (html.find("Symbol MER posledního M17 rámce") == std::string::npos ||
+        html.find("klouzavý průměr") == std::string::npos ||
+        html.find("Ověřená BER") == std::string::npos ||
+        html.find("m17-mer-hero") == std::string::npos ||
         html.find("m17-panel") == std::string::npos ||
         html.find("plugins-panel") == std::string::npos)
         return 24;
@@ -151,7 +159,8 @@ int main()
         return 22;
 
     const std::string status = httpGet(18081, "/api/status");
-    if (status.find("\"state\":") == std::string::npos)
+    if (status.find("\"state\":") == std::string::npos ||
+        status.find("\"power_save\":true") == std::string::npos)
         return 10;
 
     const std::string health = httpGet(18081, "/api/health");

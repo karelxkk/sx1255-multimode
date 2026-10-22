@@ -80,6 +80,7 @@ int main(int argc, char** argv)
                     lsf.dstCallsign().c_str(), lsf.lsfType() == 0 ? "packet" : "stream", ber);
     };
     bool lsfRejected = false;
+    bool frameRejected = false;
     callbacks.onLSFBadCRC = [&](const LSF&, double ber) {
         lsfRejected = true;
         std::printf("  LSF bad crc ber=%.1f%%\n", ber);
@@ -93,7 +94,8 @@ int main(int argc, char** argv)
         std::printf("  packet bad crc len=%zu ber=%.1f%% hex=%s \"%s\"\n", payload.size(), ber,
                     hex(payload).c_str(), text(payload).c_str());
     };
-    callbacks.onFrameDropped = [](std::uint16_t typ, const char* reason) {
+    callbacks.onFrameDropped = [&](std::uint16_t typ, const char* reason) {
+        frameRejected = true;
         std::printf("  frame dropped type=0x%04x %s\n", typ, reason);
     };
     callbacks.onPacketReattached = [](const LSF&) { std::printf("  frame re-attached\n"); };
@@ -139,11 +141,16 @@ int main(int argc, char** argv)
                     amp,
                     decoder.syncedType() == PacketSync ? "packet"
                         : (decoder.syncedType() == StreamSync ? "stream" : "idle"));
+        const std::uint16_t syncedBefore = decoder.syncedType();
+        frameRejected = false;
         decoder.decodeFrame(typ, bits);
         if (lsfRejected) {
-            syncPtr->retract();
+            syncPtr->retract(syncedBefore != 0);
             lsfRejected = false;
+        } else if (frameRejected && syncedBefore != 0) {
+            syncPtr->retract(true);
         }
+        frameRejected = false;
         syncPtr->setExpectedType(decoder.syncedType() == PacketSync ? PacketSync : 0);
     }, thresholds);
     syncPtr = &synchronizer;

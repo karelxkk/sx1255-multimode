@@ -43,6 +43,7 @@ public:
     void setWaterfallProvider(std::function<std::string(std::uint64_t)> provider);
     void setHealthProvider(std::function<std::string()> provider);
     void setSystemProvider(std::function<std::string()> provider);
+    void setPowerSaveProvider(std::function<bool()> provider);
     void setPluginRegistry(PluginRegistry* registry);
 
 private:
@@ -68,6 +69,7 @@ private:
     std::function<std::string(std::uint64_t)> m_waterfallProvider;
     std::function<std::string()> m_healthProvider;
     std::function<std::string()> m_systemProvider;
+    std::function<bool()> m_powerSaveProvider;
     PluginRegistry* m_registry = nullptr;
     std::atomic<bool> m_running{false};
     std::thread m_thread;

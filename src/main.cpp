@@ -132,6 +132,9 @@ int main(int argc, char** argv)
         sessions.setStatistics(&stats);
         sessions.setPreferredNetworkMode(sx1255::parseNetworkMode(config.network.mode));
         sx1255::IQDispatcher dispatcher(registry, sessions, nullptr);
+        dispatcher.setIdlePowerSave(config.powerSave.enabled,
+                                    config.powerSave.sleepBelowDbfs,
+                                    config.powerSave.wakeAboveDbfs);
 
         sx1255::spectrum::SpectrumAnalyzer spectrum(
             static_cast<std::size_t>(config.spectrum.fftSize), 125000.0,
@@ -242,6 +245,8 @@ int main(int argc, char** argv)
             return snapshot;
         });
         http.setSpectrumProvider([&spectrum] { return spectrum.toJson(); });
+        http.setPowerSaveProvider(
+            [&dispatcher] { return dispatcher.idlePowerSaveActive(); });
         http.setWaterfallProvider([&waterfall](std::uint64_t sinceSeq) {
             return waterfall.toJson(sinceSeq);
         });

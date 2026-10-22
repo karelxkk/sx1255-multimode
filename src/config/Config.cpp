@@ -388,6 +388,19 @@ Config loadConfig(const std::string& path)
         config.network.mode = optString(*network, "mode", config.network.mode);
     }
 
+    if (hasKey(root, "power_save")) {
+        const YamlNode* power = child(root, "power_save");
+        config.powerSave.enabled =
+            optBool(*power, "enabled", config.powerSave.enabled);
+        config.powerSave.sleepBelowDbfs =
+            optDouble(*power, "sleep_below_dbfs", config.powerSave.sleepBelowDbfs);
+        config.powerSave.wakeAboveDbfs =
+            optDouble(*power, "wake_above_dbfs", config.powerSave.wakeAboveDbfs);
+        if (config.powerSave.wakeAboveDbfs <= config.powerSave.sleepBelowDbfs)
+            throw std::runtime_error(
+                "power_save.wake_above_dbfs must be greater than sleep_below_dbfs");
+    }
+
     if (hasKey(root, "recording")) {
         const YamlNode* recording = child(root, "recording");
         config.recording.enabled = optBool(*recording, "enabled", false);
@@ -554,6 +567,14 @@ std::string serializeConfig(const Config& config)
     out << "      module: " << config.m17.reflector.module << '\n';
     out << "network:\n";
     out << "  mode: " << config.network.mode << '\n';
+    out << '\n';
+
+    out << "power_save:\n";
+    out << "  enabled: " << (config.powerSave.enabled ? "true" : "false") << '\n';
+    out << "  sleep_below_dbfs: "
+        << formatDouble(config.powerSave.sleepBelowDbfs) << '\n';
+    out << "  wake_above_dbfs: "
+        << formatDouble(config.powerSave.wakeAboveDbfs) << '\n';
     out << '\n';
 
     out << "recording:\n";

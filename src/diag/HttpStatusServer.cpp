@@ -100,6 +100,11 @@ void HttpStatusServer::setSystemProvider(std::function<std::string()> provider)
     m_systemProvider = std::move(provider);
 }
 
+void HttpStatusServer::setPowerSaveProvider(std::function<bool()> provider)
+{
+    m_powerSaveProvider = std::move(provider);
+}
+
 void HttpStatusServer::setPluginRegistry(PluginRegistry* registry)
 {
     m_registry = registry;
@@ -126,7 +131,13 @@ std::string HttpStatusServer::handleStatus()
         case Mode::DStar: m_stats.setNetworkMode("D-Star"); break;
         default:          m_stats.setNetworkMode("FM / SVXLink"); break;
     }
-    return m_stats.statusJson();
+    std::string body = m_stats.statusJson();
+    if (m_powerSaveProvider && body.size() >= 2 && body.back() == '}') {
+        body.insert(body.size() - 1,
+                    std::string(",\"power_save\":") +
+                    (m_powerSaveProvider() ? "true" : "false"));
+    }
+    return body;
 }
 
 std::string HttpStatusServer::handlePlugins() const

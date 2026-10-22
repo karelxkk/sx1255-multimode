@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace sx1255::m17 {
 
@@ -118,11 +119,21 @@ M17Synchronizer::M17Synchronizer(int sps, FrameSink sink, SyncThresholds thresho
 void M17Synchronizer::reset()
 {
     m_symbols.clear();
+    m_retractPrefix.clear();
+    m_extracted.clear();
+    m_lastPayloadSymbols.clear();
+    m_canRetract = false;
+    m_lastExtractedType = 0;
+    m_suppressedType = 0;
+    m_suppressUntilSample = 0;
 }
 
 void M17Synchronizer::extractPayload(float dist, std::uint16_t typ)
 {
     m_canRetract = false;
+    m_lastExtractedType = typ;
+    m_retractPrefix.clear();
+    m_extracted.clear();
     int offset = 0;
     for (int i = 0; i < m_sps / 2; ++i) {
         const float d = syncWordDistance(syncMetrics(m_symbols, i + 1, m_sps), typ);
@@ -132,6 +143,8 @@ void M17Synchronizer::extractPayload(float dist, std::uint16_t typ)
         }
     }
 
+    m_retractPrefix.assign(m_symbols.begin(),
+                           m_symbols.begin() + offset + 16 * m_sps);
     m_symbols.erase(m_symbols.begin(), m_symbols.begin() + offset);
     m_symbols.erase(m_symbols.begin(), m_symbols.begin() + 16 * m_sps);
 
@@ -154,13 +167,22 @@ void M17Synchronizer::extractPayload(float dist, std::uint16_t typ)
     m_sink(typ, softBits);
 }
 
-void M17Synchronizer::retract()
+void M17Synchronizer::retract(bool restoreSyncWindow)
 {
     if (!m_canRetract)
         return;
     m_symbols.insert(m_symbols.begin(), m_extracted.begin(), m_extracted.end());
+    if (restoreSyncWindow && !m_retractPrefix.empty())
+        m_symbols.insert(m_symbols.begin(), m_retractPrefix.begin(), m_retractPrefix.end());
+    m_retractPrefix.clear();
     m_extracted.clear();
     m_canRetract = false;
+    // A rejected candidate is usually a random sync-like pattern inside an
+    // already-running stream.  Keep its complete window available so the true
+    // stream sync can still be found, but do not accept the same candidate
+    // type again while the synchronizer advances through that window.
+    m_suppressedType = m_lastExtractedType;
+    m_suppressUntilSample = m_samples + 16 * static_cast<std::uint64_t>(m_sps);
 }
 
 void M17Synchronizer::push(float sample)
@@ -174,14 +196,21 @@ void M17Synchronizer::push(float sample)
 
     // Blind detection: the classic best-of-six candidates, each against its own
     // threshold (m17-gateway compares the winner against its limit).
+    const bool suppressRejected = m_samples < m_suppressUntilSample;
+    const auto suppressed = [this, suppressRejected](std::uint16_t typ) {
+        return suppressRejected && typ == m_suppressedType;
+    };
     const struct {
         float distance;
         std::uint16_t type;
         float limit;
     } candidates[6] = {
-        {metrics.lsf, LSFSync, m_thresholds.lsf},
-        {metrics.packetPair, PacketSync, m_thresholds.packet},
-        {metrics.packetEnd, PacketSync, m_thresholds.packet},
+        {suppressed(LSFSync) ? std::numeric_limits<float>::infinity() : metrics.lsf,
+         LSFSync, m_thresholds.lsf},
+        {suppressed(PacketSync) ? std::numeric_limits<float>::infinity() : metrics.packetPair,
+         PacketSync, m_thresholds.packet},
+        {suppressed(PacketSync) ? std::numeric_limits<float>::infinity() : metrics.packetEnd,
+         PacketSync, m_thresholds.packet},
         {metrics.streamPair, StreamSync, m_thresholds.stream},
         {metrics.streamEnd, StreamSync, m_thresholds.stream},
         {metrics.eotPair, EOTMarker, m_thresholds.eot},
@@ -212,7 +241,8 @@ void M17Synchronizer::push(float sample)
     // threshold.  An LSF wins over it - that is a 16 symbol match and means a
     // new transmission starts.
     m_lastFollow = false;
-    if (m_expectedType == PacketSync && metrics.packetOnly < m_thresholds.follow &&
+    if (m_expectedType == PacketSync && !suppressed(PacketSync) &&
+        metrics.packetOnly < m_thresholds.follow &&
         !(typ == LSFSync && dist < m_thresholds.lsf)) {
         typ = PacketSync;
         dist = metrics.packetOnly;
@@ -227,7 +257,8 @@ void M17Synchronizer::push(float sample)
     // A header whose preamble was not repeated: the LSF sync word alone decides.
     // Radios that retry a packet send the header without the preamble again,
     // and without this the frames were heard while the message had no header.
-    if (typ == 0 && metrics.lsfOnly < m_thresholds.lsfSync) {
+    if (typ == 0 && !suppressed(LSFSync) &&
+        metrics.lsfOnly < m_thresholds.lsfSync) {
         typ = LSFSync;
         dist = metrics.lsfOnly;
         m_lastKind = Kind::SyncOnly;

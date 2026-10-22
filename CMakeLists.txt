@@ -111,6 +111,9 @@ install(PROGRAMS scripts/record_dataset.sh scripts/rc1_validate.sh scripts/deplo
 
 install(FILES README.md CHANGELOG.md RELEASE_NOTES.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/sx1255-multimode)
+install(FILES docs/POWER_SAVE.md docs/M17_FRAME_AUDIT.md
+              docs/M17_BER_JUMP_ANALYSIS.md
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/sx1255-multimode)
 
 install(FILES deploy/svxlink/svxlink.conf deploy/svxlink/README.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/sx1255-multimode/svxlink)

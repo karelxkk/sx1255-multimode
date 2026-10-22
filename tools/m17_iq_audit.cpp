@@ -124,6 +124,7 @@ int main(int argc, char** argv)
                        rxScalingCoeffSX1255);
 
     Decoder::Callbacks callbacks;
+    bool frameRejected = false;
     callbacks.onLSF = [](const LSF&, double) {};
     callbacks.onLSFBadCRC = [](const LSF&, double) {};
     callbacks.onPacket = [](const LSF&, const std::vector<std::uint8_t>&, double) {};
@@ -132,7 +133,9 @@ int main(int argc, char** argv)
                             std::uint16_t, std::uint16_t, double) {};
     callbacks.onStreamLICH = [](const LSF&, double) {};
     callbacks.onStreamEOT = [](const LSF&, std::uint16_t, std::uint16_t, double) {};
-    callbacks.onFrameDropped = [](std::uint16_t, const char*) {};
+    callbacks.onFrameDropped = [&](std::uint16_t, const char*) {
+        frameRejected = true;
+    };
     callbacks.onEOT = [] {};
     callbacks.onPacketReattached = [](const LSF&) {};
     callbacks.onPacketFrame = [](std::uint8_t, bool, int) {};
@@ -185,8 +188,12 @@ int main(int argc, char** argv)
         const std::uint16_t syncedBefore = decoder.syncedType();
         lsfDecoded = false;
         lsfRejected = false;
+        frameRejected = false;
         decoder.decodeFrame(typ, softBits);
-        const bool useful = lsfDecoded || syncedBefore != 0 || decoder.syncedType() != 0;
+        const FrameAudit audit = decoder.lastFrameAudit();
+        const bool carrierFrame = typ != LSFSync && audit.frameStatus != 0 &&
+            (syncedBefore != 0 || decoder.syncedType() != 0);
+        const bool useful = lsfDecoded || carrierFrame;
         if (useful) {
             ++acceptedHits;
             ++validFrames;
@@ -198,9 +205,12 @@ int main(int argc, char** argv)
             addCandidate(evaluation, "Rejected", true);
         }
         if (lsfRejected) {
-            syncPtr->retract();
+            syncPtr->retract(syncedBefore != 0);
             lsfRejected = false;
+        } else if (frameRejected && syncedBefore != 0) {
+            syncPtr->retract(true);
         }
+        frameRejected = false;
         syncPtr->setExpectedType(decoder.syncedType() == PacketSync ? PacketSync : 0);
     });
     syncPtr = &synchronizer;

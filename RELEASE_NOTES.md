@@ -1,5 +1,38 @@
 # Release Notes — sx1255-multimode
 
+## v1.0.0-rc6 — M17 MER a úspora CPU
+
+Release rc6 zpřesňuje kvalitu M17 příjmu a výrazně snižuje zatížení
+Raspberry Pi v době, kdy je kanál klidný:
+
+- M17 falešné LSF/packet syncy uvnitř streamu se už nepočítají jako platné
+  rámce a nemohou skokově změnit hlavní BER.
+- Při odmítnutí falešného kandidáta se uvnitř otevřeného streamu obnoví celé
+  okno, takže se neztratí skutečný hlasový rámec. V klidu se okno nevrací,
+  aby se falešný šumový sync nezacyklil a nezastavil RX/FFT.
+- Na kontrolním 141s IQ záznamu DM-1701 se počet platných stream rámců zvýšil
+  z 2326 na 2398 a počet chybějících rámců klesl ze 17 na 0.
+- Dashboard zobrazuje jako hlavní ukazatel **symbol MER**. Ověřená BER
+  LSF/paketu zůstává jako doplňková hodnota. MER se exportuje také přes API
+  a do rámcového auditu.
+- Nový volitelný `power_save` režim pozastaví plugin detektory v `DETECTING`
+  pod RSSI prahem. IQ příjem, FFT, waterfall a capture běží dál a první blok
+  nad probouzecím prahem okamžitě obnoví detekci.
+- Na cíli klesla klidová zátěž z přibližně 52–56 % na 16–17 % CPU.
+- Low-IF rotace −90° používá přímou výměnu I/Q složek bez trigonometrie.
+
+Konfigurace klidové úspory:
+
+```yaml
+power_save:
+  enabled: true
+  sleep_below_dbfs: -57.0
+  wake_above_dbfs: -55.0
+```
+
+Detaily: `docs/POWER_SAVE.md`, `docs/M17_FRAME_AUDIT.md`
+a `docs/M17_BER_JUMP_ANALYSIS.md`.
+
 ## v1.0.0-rc5 — M17 packet RX bez ztrát
 
 Příjem M17 packetů (SMS, poloha) je přepracovaný tak, aby žádný packet nezmizel:
@@ -40,9 +73,9 @@ a režimy (FM+CTCSS, D-Star, M17) jako nezávislé pluginy.
 
 ## Stav release
 
-**v1.0.0-rc5** — dokončený D-Star řetězec včetně lokálního RX→TX převaděče,
-DSRP gatewaye pro ircDDBGateway/DStarGateway a hotspot režimu pro DCS/XLX
-reflektory. Dashboard už nezobrazuje confidence v exponenciálním tvaru.
+**v1.0.0-rc6** — M17 stream bez falešných BER skoků, MER dashboard
+a klidová CPU úspora. Zachovává D-Star RX→TX převaděč, DSRP gateway
+a hotspot režim pro DCS/XLX.
 
 Release obsahuje i instalační assety:
 
@@ -64,7 +97,7 @@ Release obsahuje i instalační assety:
 Viz `docs/DEPLOYMENT.md`. Zkráceně:
 
 ```text
-sudo apt install ./sx1255-multimode_1.0.0-rc4_arm64.deb
+sudo apt install ./sx1255-multimode_1.0.0-rc6_arm64.deb
 sudo systemctl status sx1255-multimode
 ```
 

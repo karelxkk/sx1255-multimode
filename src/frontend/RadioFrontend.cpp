@@ -36,7 +36,9 @@ bool RadioFrontend::start(const Settings& settings)
     m_device->setTxFrequency(settings.txFrequency);
     m_device->setPower(settings.power);
     m_device->setSquelch(settings.squelch);
-    m_rxNcoPhase = 0.0;
+    m_rxNcoI = 1.0;
+    m_rxNcoQ = 0.0;
+    m_rxNcoSamples = 0;
 
     m_running = true;
     m_thread = std::thread([this] { run(); });
@@ -87,20 +89,41 @@ void RadioFrontend::run()
 void RadioFrontend::applyRxIfRotation(std::vector<ComplexFloat>& samples)
 {
     const double inc = 2.0 * 3.14159265358979323846 * kRxIfShiftHz / kRxSampleRateHz;
+    static const double stepC = std::cos(inc);
+    static const double stepS = std::sin(inc);
+
+    // The production low-IF shift is exactly -90 degrees at 125 kSa/s.  In
+    // that case a complex sample is just (I,Q) -> (Q,-I), with no arithmetic
+    // oscillator or per-sample normalisation needed.
+    if (std::abs(stepC) < 1e-12 && stepS < 0.0) {
+        for (ComplexFloat& sample : samples) {
+            const float i = sample.i;
+            sample.i = sample.q;
+            sample.q = -i;
+        }
+        return;
+    }
 
     for (ComplexFloat& sample : samples) {
-        const double c = std::cos(m_rxNcoPhase);
-        const double s = std::sin(m_rxNcoPhase);
         const double i = static_cast<double>(sample.i);
         const double q = static_cast<double>(sample.q);
         sample = {
-            static_cast<float>(i * c - q * s),
-            static_cast<float>(i * s + q * c)};
-        m_rxNcoPhase += inc;
-        if (m_rxNcoPhase > 3.14159265358979323846)
-            m_rxNcoPhase -= 2.0 * 3.14159265358979323846;
-        else if (m_rxNcoPhase < -3.14159265358979323846)
-            m_rxNcoPhase += 2.0 * 3.14159265358979323846;
+            static_cast<float>(i * m_rxNcoI - q * m_rxNcoQ),
+            static_cast<float>(i * m_rxNcoQ + q * m_rxNcoI)};
+
+        const double nextI = m_rxNcoI * stepC - m_rxNcoQ * stepS;
+        m_rxNcoQ = m_rxNcoI * stepS + m_rxNcoQ * stepC;
+        m_rxNcoI = nextI;
+
+        // The oscillator is advanced by recurrence rather than two sin/cos
+        // calls per sample.  Periodic normalisation removes accumulated
+        // floating-point amplitude drift.
+        if (++m_rxNcoSamples >= 4096) {
+            const double norm = 1.0 / std::hypot(m_rxNcoI, m_rxNcoQ);
+            m_rxNcoI *= norm;
+            m_rxNcoQ *= norm;
+            m_rxNcoSamples = 0;
+        }
     }
 }
 

@@ -94,9 +94,9 @@ public:
     // Undo the payload extraction of the last burst.  A sync word that turns
     // out to carry nothing valid (a false header, a header whose CRC fails)
     // must not swallow the signal that follows it - the frames behind it are
-    // real.  Only the sync word itself stays consumed, so the same window
-    // cannot trigger again.
-    void retract();
+    // real.  restoreSyncWindow keeps the sync symbols available as well; that
+    // is needed only while a real stream is already established.
+    void retract(bool restoreSyncWindow = true);
     bool canRetract() const { return m_canRetract; }
 
     // setExpectedType tells the synchronizer which frame type to expect while
@@ -137,9 +137,13 @@ private:
     bool m_lastFollow = false;
     Kind m_lastKind = Kind::Blind;
     std::uint64_t m_samples = 0;
+    std::vector<Symbol> m_retractPrefix; // candidate sync window and alignment
     std::vector<Symbol> m_extracted;   // payload samples of the last burst
     std::vector<Symbol> m_lastPayloadSymbols;
     bool m_canRetract = false;
+    std::uint16_t m_lastExtractedType = 0;
+    std::uint16_t m_suppressedType = 0;
+    std::uint64_t m_suppressUntilSample = 0;
     SyncEvaluation m_lastEvaluation{};
     float m_evaluationMaxDistance = 7.0F;
     EvaluationSink m_evaluationSink;

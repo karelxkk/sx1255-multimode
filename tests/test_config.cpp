@@ -72,6 +72,10 @@ int main()
         "      near_miss_interval_ms: 125\n"
         "network:\n"
         "  mode: dstar\n"
+        "power_save:\n"
+        "  enabled: true\n"
+        "  sleep_below_dbfs: -58.5\n"
+        "  wake_above_dbfs: -56.5\n"
         "automatic_capture:\n"
         "  trigger:\n"
         "    m17_near_miss: true\n";
@@ -128,6 +132,11 @@ int main()
         return 16;
     if (sx1255::parseNetworkMode(config.network.mode) != sx1255::Mode::DStar)
         return 17;
+    if (!config.powerSave.enabled ||
+        config.powerSave.sleepBelowDbfs != -58.5 ||
+        config.powerSave.wakeAboveDbfs != -56.5) {
+        return 24;
+    }
 
     // Serialization must contain the values we just parsed.
     const std::string serialized = sx1255::serializeConfig(config);
@@ -135,6 +144,10 @@ int main()
         return 9;
     if (serialized.find("438575000") == std::string::npos)
         return 10;
+    if (serialized.find("sleep_below_dbfs: -58.5") == std::string::npos ||
+        serialized.find("wake_above_dbfs: -56.5") == std::string::npos) {
+        return 25;
+    }
 
     return 0;
 }

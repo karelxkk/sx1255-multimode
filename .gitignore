@@ -8,5 +8,7 @@ compile_commands.json
 /datasets/**/*.iq
 /datasets/**/*.f64
 /datasets/**/*.jsonl
+/datasets/**/*.audit.json
+/datasets/**/*.log*
 __pycache__/
 *.pyc

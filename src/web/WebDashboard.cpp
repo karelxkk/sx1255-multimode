@@ -50,6 +50,8 @@ const std::string& dashboardHtml()
   .ber-state { font-size:20px; font-weight:700; }
   .ber-average { color:#c9d1d9; }
   .ber-average b { font:700 22px/1 ui-monospace,monospace; }
+  .ber-secondary { color:#8b949e; border-top:1px solid #21262d; padding-top:8px; }
+  .ber-secondary b { color:#c9d1d9; font-family:ui-monospace,monospace; }
   .ber-meter { height:14px; border-radius:999px; overflow:hidden; background:#21262d;
                border:1px solid #30363d; }
   .ber-meter div { height:100%; width:0; transition:width .25s ease, background .25s ease; }
@@ -76,6 +78,7 @@ const std::string& dashboardHtml()
   <div>mód <span class="stat" id="mode">-</span></div>
   <div>síť <span class="stat" id="netmode">-</span></div>
   <div>RSSI <span class="stat" id="rssi">-</span> dBm</div>
+  <div>úspora <span class="stat" id="powersave">-</span></div>
   <div>uptime <span class="stat" id="uptime">-</span> s</div>
   <div id="iq"></div>
 </header>
@@ -100,16 +103,17 @@ const std::string& dashboardHtml()
   </div>
   <div class="panel" id="m17-panel">
     <h2>M17 Diagnostics</h2>
-    <div id="m17-ber-hero" class="ber-hero ber-unknown">
+    <div id="m17-mer-hero" class="ber-hero ber-unknown">
       <div>
-        <div class="ber-value"><b id="m17-ber-big">-</b><span>%</span></div>
-        <div class="ber-caption">BER posledního rámce</div>
+        <div class="ber-value"><b id="m17-mer-big">-</b><span>dB</span></div>
+        <div class="ber-caption">Symbol MER posledního M17 rámce</div>
       </div>
       <div class="ber-side">
-        <div id="m17-ber-state" class="ber-state">čekám na rámec</div>
-        <div class="ber-average">průměr 100 rámců: <b id="m17-ber-average">-</b> %</div>
-        <div class="ber-meter"><div id="m17-ber-bar"></div></div>
-        <div class="ber-help">Kanálové chyby před FEC. Nižší hodnota je lepší.</div>
+        <div id="m17-mer-state" class="ber-state">čekám na rámec</div>
+        <div class="ber-average">klouzavý průměr: <b id="m17-mer-average">-</b> dB</div>
+        <div class="ber-meter"><div id="m17-mer-bar"></div></div>
+        <div class="ber-help">Poměr ideálních 4FSK symbolů k chybovému vektoru. Vyšší hodnota je lepší.</div>
+        <div class="ber-secondary">Ověřená BER: <b id="m17-ber-last">-</b> % · průměr <b id="m17-ber-average">-</b> %</div>
       </div>
     </div>
     <div class="grid">
@@ -236,6 +240,7 @@ async function refreshStatus(){
   $('mode').textContent = s.mode || '-';
   $('netmode').textContent = s.network_mode || '-';
   $('rssi').textContent = s.rssi;
+  $('powersave').textContent = s.power_save ? 'aktivní' : 'vypnuto';
   $('uptime').textContent = s.uptime;
   $('fm').textContent = s.stats ? s.stats.fm_detected : '-';
   $('dstar').textContent = s.stats ? s.stats.dstar_detected : '-';
@@ -260,7 +265,7 @@ async function refreshPlugins(){
       const k = Object.keys(p.telemetry);
       let firstMetric = true;
       for (let i=0;i<k.length;i++){
-        if (k[i].indexOf('ber') !== -1)
+        if (k[i].indexOf('ber') !== -1 || k[i].indexOf('mer') !== -1)
           continue;
         if (!firstMetric) t += ', ';
         firstMetric = false;
@@ -281,21 +286,32 @@ async function refreshIq(){
 function fixed(value, digits){
   return (typeof value === 'number' && Number.isFinite(value)) ? value.toFixed(digits) : '-';
 }
-function updateBerHero(last, average){
-  const hero = $('m17-ber-hero');
-  const value = (typeof last === 'number' && Number.isFinite(last) && last >= 0) ? last : 0;
-  const averageValue = (typeof average === 'number' && Number.isFinite(average) && average >= 0)
-    ? average : 0;
+function updateMerHero(last, average, berLast, berAverage){
+  const hero = $('m17-mer-hero');
+  const valid = typeof last === 'number' && Number.isFinite(last) && last >= 0;
+  const value = valid ? last : 0;
+  const averageValue =
+    (typeof average === 'number' && Number.isFinite(average) && average >= 0)
+      ? average : -1;
   hero.classList.remove('ber-good', 'ber-warn', 'ber-bad', 'ber-unknown');
-  let cls = 'ber-bad';
-  let text = 'kritický';
-  if (value < 2){ cls = 'ber-good'; text = 'výborný'; }
-  else if (value < 5){ cls = 'ber-warn'; text = 'použitelný'; }
+  let cls = 'ber-unknown';
+  let text = 'čekám na rámec';
+  if (valid && value >= 14.0){ cls = 'ber-good'; text = 'výborný'; }
+  else if (valid && value >= 11.5){ cls = 'ber-warn'; text = 'použitelný'; }
+  else if (valid){ cls = 'ber-bad'; text = 'slabý'; }
   hero.classList.add(cls);
-  $('m17-ber-big').textContent = fixed(value, 2);
-  $('m17-ber-average').textContent = fixed(averageValue, 2);
-  $('m17-ber-state').textContent = text;
-  $('m17-ber-bar').style.width = (value === 0 ? 0 : Math.max(2, Math.min(100, value * 10))) + '%';
+  $('m17-mer-big').textContent = valid ? fixed(value, 1) : '-';
+  $('m17-mer-average').textContent =
+    averageValue >= 0 ? fixed(averageValue, 1) : '-';
+  $('m17-mer-state').textContent = text;
+  $('m17-mer-bar').style.width =
+    (valid ? Math.max(2, Math.min(100, value / 18 * 100)) : 0) + '%';
+  $('m17-ber-last').textContent =
+    (typeof berLast === 'number' && Number.isFinite(berLast) && berLast >= 0)
+      ? fixed(berLast, 2) : '-';
+  $('m17-ber-average').textContent =
+    (typeof berAverage === 'number' && Number.isFinite(berAverage) && berAverage >= 0)
+      ? fixed(berAverage, 2) : '-';
 }
 async function refreshM17Diagnostics(){
   const d = await getJSON('/api/m17/diagnostics');
@@ -312,7 +328,8 @@ async function refreshM17Diagnostics(){
   $('m17-golay').textContent = String(d.golay_ok || 0) + ' / ' + String(d.golay_fail || 0);
   $('m17-viterbi').textContent = String(d.viterbi_ok || 0) + ' / ' + String(d.viterbi_fail || 0);
   $('m17-frame').textContent = String(d.frame_ok || 0) + ' / ' + String(d.frame_fail || 0);
-  updateBerHero(d.last_frame_ber_percent, d.average_ber_percent);
+  updateMerHero(d.last_frame_mer_db, d.average_mer_db,
+                d.last_frame_ber_percent, d.average_ber_percent);
   const body = $('m17-candidates');
   body.innerHTML = '';
   const rows = (d.candidates || []).slice().reverse();

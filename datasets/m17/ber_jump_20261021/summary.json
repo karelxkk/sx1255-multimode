@@ -1,0 +1,31 @@
+{
+  "captured_at": "2026-10-21T18:36:54+02:00",
+  "duration_seconds": 141.000704,
+  "sample_rate_hz": 125000,
+  "samples": 17625088,
+  "iq_file": "m17_fullstream_20261021.iq",
+  "iq_sha256": "3e22002133f271e4e31bbedd9613415f75424e558eb6277bd54656a4cd9c2c74",
+  "source": "Baofeng DM-1701 / OpenRTX 0.4.4 / M17 preamble 160 ms",
+  "lna_gain_db": 36,
+  "audit": {
+    "valid_lsf": 3,
+    "valid_stream_frames": 2326,
+    "stream_golay_fail": 0,
+    "active_false_lsf": 121,
+    "active_false_packet": 15,
+    "false_lsf_median_ber_percent": 10.575,
+    "false_lsf_median_sync_distance": 4.053,
+    "false_lsf_median_viterbi_metric": 48,
+    "stream_median_sync_distance": 3.534,
+    "stream_median_viterbi_metric": 10,
+    "stream_median_interval_ms": 40.0,
+    "missing_stream_frames_due_to_false_sync": 17
+  },
+  "finding": "High BER events are false LSF candidates inside an active M17 stream; decoded stream frames remain valid.",
+  "after_fix": {
+    "valid_stream_frames": 2398,
+    "active_false_lsf": 60,
+    "stream_missing_frames": 0,
+    "validated_ber_only": true
+  }
+}

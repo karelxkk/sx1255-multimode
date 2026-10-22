@@ -67,7 +67,9 @@ private:
     std::thread              m_thread;
     std::vector<ComplexFloat> m_rxBuffer;
     std::uint64_t            m_sequence = 0;
-    double                   m_rxNcoPhase = 0.0;
+    double                   m_rxNcoI = 1.0;
+    double                   m_rxNcoQ = 0.0;
+    std::uint32_t            m_rxNcoSamples = 0;
 
     static constexpr double kRxIfShiftHz = -25000.0;  // low-IF NCO (LO = RX - 25 kHz)
     static constexpr double kRxSampleRateHz = 125000.0;

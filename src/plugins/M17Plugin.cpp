@@ -67,6 +67,7 @@ class M17Plugin final : public IModePlugin {
         double afcHz = 0.0;
         float syncDistance = 0.0F;
         double softbitRms = 0.0;
+        double merDb = -1.0;
         double berPercent = -1.0;
         int channelErrors = -1;
         int channelBits = 0;
@@ -89,6 +90,45 @@ class M17Plugin final : public IModePlugin {
         std::array<std::uint64_t, 16> histogram{};
         m17::SoftbitStats last;
     };
+
+    static bool validatedBer(const FrameAuditEntry& entry)
+    {
+        return entry.crcStatus == 1 && entry.frameStatus == 1 &&
+               entry.berPercent >= 0.0;
+    }
+
+    static bool measuredMer(const FrameAuditEntry& entry)
+    {
+        return entry.result == "M17" && entry.frameStatus != 0 &&
+               entry.merDb >= 0.0;
+    }
+
+    static double symbolMerDb(const std::vector<m17::Symbol>& symbols)
+    {
+        if (symbols.empty())
+            return -1.0;
+
+        static constexpr std::array<m17::Symbol, 4> levels = {
+            -3.0F, -1.0F, 1.0F, 3.0F
+        };
+        double signalPower = 0.0;
+        double errorPower = 0.0;
+        for (const m17::Symbol symbol : symbols) {
+            m17::Symbol nearest = levels[0];
+            for (const m17::Symbol level : levels) {
+                if (std::abs(symbol - level) < std::abs(symbol - nearest))
+                    nearest = level;
+            }
+            const double error = static_cast<double>(symbol - nearest);
+            signalPower += static_cast<double>(nearest) * nearest;
+            errorPower += error * error;
+        }
+        if (signalPower < 1e-12)
+            return -1.0;
+        if (errorPower < 1e-12)
+            return 40.0;
+        return 10.0 * std::log10(signalPower / errorPower);
+    }
 
 public:
     M17Plugin(M17Config config, SystemStatistics* stats)
@@ -116,13 +156,21 @@ public:
               const m17::SyncEvaluation evaluation = m_synchronizer.lastEvaluation();
               m_lsfWasSyncOnly =
                   m_synchronizer.lastKind() == m17::M17Synchronizer::Kind::SyncOnly;
+              m_frameRejected = false;
               m_decoder.decodeFrame(typ, softBits);
               const m17::FrameAudit frameAudit = m_decoder.lastFrameAudit();
-              const bool useful = m_lsfDecoded || syncedBefore != 0 ||
-                                  m_decoder.syncedType() != 0;
+              const double frameMerDb = typ == m17::EOTMarker
+                  ? -1.0 : symbolMerDb(m_synchronizer.lastPayloadSymbols());
+              // Being inside a stream is not enough to make an LSF burst
+              // useful: random payload can contain an LSF-like 16-symbol
+              // pattern.  Only a CRC-valid LSF may claim the transmission.
+              const bool carrierFrame = typ != m17::LSFSync &&
+                  frameAudit.frameStatus != 0 &&
+                  (syncedBefore != 0 || m_decoder.syncedType() != 0);
+              const bool useful = m_lsfDecoded || carrierFrame;
               const char* result = typ == m17::EOTMarker
                   ? "EOT" : (useful ? "M17" : "Rejected");
-              recordFrameAudit(evaluation, frameAudit, result);
+              recordFrameAudit(evaluation, frameAudit, result, frameMerDb);
               recordSyncBurst(evaluation, result, useful);
               if (useful) {
                   if (m_syncBurst == 0 ||
@@ -172,9 +220,12 @@ public:
               // A header that carried nothing valid must not swallow the
               // frames behind it: hand the signal back to the synchronizer.
               if (m_lsfRejected) {
-                  m_synchronizer.retract();
+                  m_synchronizer.retract(syncedBefore != 0);
                   m_lsfRejected = false;
+              } else if (m_frameRejected && syncedBefore != 0) {
+                  m_synchronizer.retract(true);
               }
+              m_frameRejected = false;
               // Follow the decoder: while a packet transmission is running, a
               // single packet sync word identifies its frames, so the last
               // frame is not lost when the sync word that would follow it is
@@ -248,6 +299,7 @@ public:
                   std::fprintf(stderr, "\n");
               },
               [this](std::uint16_t typ, const char* reason) {   // onFrameDropped
+                  m_frameRejected = true;
                   ++m_framesDropped;
                   logDiag(m_diagFrame, "frame not usable", std::string(reason) +
                                                             " (sync=0x" +
@@ -525,15 +577,28 @@ public:
         double berSum = 0.0;
         int berCount = 0;
         double lastBer = 0.0;
+        double merSum = 0.0;
+        int merCount = 0;
+        double lastMer = -1.0;
         for (const FrameAuditEntry& entry : m_frameAudits) {
-            if (entry.result == "M17" && entry.berPercent >= 0.0) {
+            if (validatedBer(entry)) {
                 berSum += entry.berPercent;
                 ++berCount;
             }
+            if (measuredMer(entry)) {
+                merSum += entry.merDb;
+                ++merCount;
+            }
         }
         for (auto it = m_frameAudits.rbegin(); it != m_frameAudits.rend(); ++it) {
-            if (it->result == "M17" && it->berPercent >= 0.0) {
+            if (validatedBer(*it)) {
                 lastBer = it->berPercent;
+                break;
+            }
+        }
+        for (auto it = m_frameAudits.rbegin(); it != m_frameAudits.rend(); ++it) {
+            if (measuredMer(*it)) {
+                lastMer = it->merDb;
                 break;
             }
         }
@@ -542,6 +607,10 @@ public:
         t.metrics["last_frame_ber_percent"] = lastBer;
         t.metrics["average_ber_percent"] =
             berCount > 0 ? berSum / berCount : 0.0;
+        t.metrics["mer_db"] = lastMer;
+        t.metrics["last_frame_mer_db"] = lastMer;
+        t.metrics["average_mer_db"] =
+            merCount > 0 ? merSum / merCount : -1.0;
         const m17::LayerCountersSnapshot layers = m_decoder.layerCounters();
         t.metrics["sync_detected"] = static_cast<double>(layers.syncDetected);
         t.metrics["lsf_ok"] = static_cast<double>(layers.lsfOk);
@@ -605,15 +674,28 @@ public:
         double berSum = 0.0;
         int berCount = 0;
         double lastBer = 0.0;
+        double merSum = 0.0;
+        int merCount = 0;
+        double lastMer = -1.0;
         for (const FrameAuditEntry& entry : m_frameAudits) {
-            if (entry.result == "M17" && entry.berPercent >= 0.0) {
+            if (validatedBer(entry)) {
                 berSum += entry.berPercent;
                 ++berCount;
             }
+            if (measuredMer(entry)) {
+                merSum += entry.merDb;
+                ++merCount;
+            }
         }
         for (auto it = m_frameAudits.rbegin(); it != m_frameAudits.rend(); ++it) {
-            if (it->result == "M17" && it->berPercent >= 0.0) {
+            if (validatedBer(*it)) {
                 lastBer = it->berPercent;
+                break;
+            }
+        }
+        for (auto it = m_frameAudits.rbegin(); it != m_frameAudits.rend(); ++it) {
+            if (measuredMer(*it)) {
+                lastMer = it->merDb;
                 break;
             }
         }
@@ -632,6 +714,10 @@ public:
             << ",\"last_frame_ber_percent\":" << lastBer
             << ",\"average_ber_percent\":"
             << (berCount > 0 ? berSum / berCount : 0.0)
+            << ",\"mer_db\":" << lastMer
+            << ",\"last_frame_mer_db\":" << lastMer
+            << ",\"average_mer_db\":"
+            << (merCount > 0 ? merSum / merCount : -1.0)
             << ",\"sync_detected\":" << layers.syncDetected
             << ",\"lsf_ok\":" << layers.lsfOk
             << ",\"lsf_fail\":" << layers.lsfFail
@@ -661,6 +747,7 @@ public:
                 << ",\"afc_correction_hz\":" << entry.afcHz
                 << ",\"sync_distance\":" << entry.syncDistance
                 << ",\"softbit_rms\":" << entry.softbitRms
+                     << ",\"mer_db\":" << entry.merDb
                 << ",\"ber_percent\":" << entry.berPercent
                 << ",\"channel_errors\":" << entry.channelErrors
                 << ",\"channel_bits\":" << entry.channelBits
@@ -770,7 +857,8 @@ private:
 
     void recordFrameAudit(const m17::SyncEvaluation& evaluation,
                           const m17::FrameAudit& audit,
-                          const char* result)
+                          const char* result,
+                          double merDb)
     {
         FrameAuditEntry entry;
         entry.timestamp = auditTimestamp();
@@ -778,6 +866,7 @@ private:
         entry.afcHz = m_afc.offsetHz(25000.0);
         entry.syncDistance = evaluation.distance;
         entry.softbitRms = audit.softbitStats.rms;
+        entry.merDb = merDb;
         entry.channelErrors = audit.channelErrors;
         entry.channelBits = audit.channelBits;
         if (audit.channelErrors >= 0 && audit.channelBits > 0)
@@ -838,6 +927,7 @@ private:
                      << ",\"afc_correction_hz\":" << entry.afcHz
                      << ",\"sync_distance\":" << entry.syncDistance
                      << ",\"softbit_rms\":" << entry.softbitRms
+                << ",\"mer_db\":" << entry.merDb
                      << ",\"ber_percent\":" << entry.berPercent
                      << ",\"channel_errors\":" << entry.channelErrors
                      << ",\"channel_bits\":" << entry.channelBits
@@ -905,7 +995,8 @@ private:
              << " AFC=" << std::showpos << std::setprecision(0) << entry.afcHz
              << std::noshowpos << "Hz SyncDistance=" << std::setprecision(2)
              << entry.syncDistance << " SoftbitRMS=" << std::setprecision(3)
-             << entry.softbitRms << " BER=" << std::setprecision(2)
+             << entry.softbitRms << " MER=" << std::setprecision(2)
+             << entry.merDb << "dB BER=" << std::setprecision(2)
              << entry.berPercent << "% ViterbiMetric=" << entry.viterbiMetric
              << " Viterbi=" << (entry.viterbiOk ? "OK" : "FAIL")
              << " Golay=" << (entry.golayOk + entry.golayFail == 0
@@ -1445,6 +1536,7 @@ private:
     DiagState m_diagFrame;
     DiagState m_diagSync;
     bool m_lsfRejected = false;
+    bool m_frameRejected = false;
     bool m_lsfWasSyncOnly = false;
     std::uint64_t m_lsfSyncRejects = 0;
     std::atomic<double> m_syncConfidence{0.0};

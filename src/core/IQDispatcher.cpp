@@ -5,10 +5,29 @@
 #include "sx1255/frontend/ITransmit.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <utility>
 #include <vector>
 
 namespace sx1255 {
+
+namespace {
+
+double blockRssiDb(const IQBlock& block)
+{
+    if (block.count == 0)
+        return -120.0;
+    double power = 0.0;
+    for (std::size_t i = 0; i < block.count; ++i) {
+        const double re = static_cast<double>(block.samples[i].i);
+        const double im = static_cast<double>(block.samples[i].q);
+        power += re * re + im * im;
+    }
+    return 10.0 * std::log10(power / static_cast<double>(block.count) + 1e-12);
+}
+
+}  // namespace
 
 IQDispatcher::IQDispatcher(PluginRegistry& registry, SessionManager& sessions, ITransmit* tx)
     : m_registry(registry)
@@ -27,6 +46,16 @@ void IQDispatcher::setIqSink(std::function<void(const ComplexFloat*, std::size_t
     m_iqSink = std::move(sink);
 }
 
+void IQDispatcher::setIdlePowerSave(bool enabled, double sleepBelowDbfs,
+                                    double wakeAboveDbfs)
+{
+    m_powerSaveEnabled = enabled;
+    m_powerSaveSleepDb = sleepBelowDbfs;
+    m_powerSaveWakeDb = wakeAboveDbfs;
+    if (!enabled)
+        m_idlePowerSave = false;
+}
+
 void IQDispatcher::dispatch(const IQBlock& block)
 {
     ++m_blocks;
@@ -35,6 +64,25 @@ void IQDispatcher::dispatch(const IQBlock& block)
         m_iqSink(block.samples, block.count);
 
     m_sessions.timeoutCheck();
+
+    if (m_powerSaveEnabled &&
+        m_sessions.state() == SessionManager::State::Detecting) {
+        const double rssi = blockRssiDb(block);
+        const bool sleeping = m_idlePowerSave.load();
+        if (sleeping && rssi >= m_powerSaveWakeDb) {
+            m_idlePowerSave = false;
+            std::fprintf(stderr,
+                         "POWER: detection resumed rssi=%.1f dBFS\n", rssi);
+        } else if (!sleeping && rssi < m_powerSaveSleepDb) {
+            m_idlePowerSave = true;
+            std::fprintf(stderr,
+                         "POWER: detection paused rssi=%.1f dBFS\n", rssi);
+        }
+        if (m_idlePowerSave.load())
+            return;
+    } else {
+        m_idlePowerSave = false;
+    }
 
     // Exclusive phase: only the owning plugin sees the IQ stream.
     if (m_sessions.isActive()) {

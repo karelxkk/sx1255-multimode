@@ -28,19 +28,38 @@ curl -X POST http://127.0.0.1:8080/api/m17/diagnostics/reset
 `m17_frame_audit.log` obsahuje pro každý sync:
 
 ```text
-timestamp RSSI AFC SyncDistance SoftbitRMS BER ViterbiMetric Viterbi
+timestamp RSSI AFC SyncDistance SoftbitRMS MER BER ViterbiMetric Viterbi
 Golay CRC LSF Frame Type Result
 ```
 
 Log se rotuje po 1 MB, tři zálohy.
 
-Dashboard zobrazuje BER jako velký samostatný ukazatel s barevným stavem
-a lištou v panelu **M17 Diagnostics**, který je vizuálně umístěný před
-panelem **Pluginy**. V plugin kartách se BER už nezobrazuje. `last` je BER
-posledního **úspěšně dekódovaného M17 rámce**, `avg` je průměr z posledních
-100 úspěšných rámců. Odmítnuté false LSF z šumu se do hlavního BER
-nezačítají; zůstávají v tabulce kandidátů s výsledkem `Rejected`.
-Pro LSF a packet se BER počítá z 368 kanálových bitů, pro stream z 272.
+Dashboard zobrazuje jako hlavní ukazatel **symbol MER** posledního
+platného M17 rámce. MER se počítá z finálních 4FSK symbolů proti ideálním
+úrovním `-3, -1, +1, +3`:
+
+```text
+MER[dB] = 10 log10( výkon ideálních symbolů / výkon chybových vektorů )
+```
+
+Na datech DM-1701 měly platné stream rámce medián přibližně 14,4 dB
+a rozsah 11,2-16,4 dB. Dashboard proto považuje za výborný MER od 14 dB,
+použitelný od 11,5 dB a nižší za slabý. Barevná lišta má rozsah 0-18 dB.
+`last` je poslední kladný M17 rámec, `avg` je klouzavý průměr posledních
+100 takových rámců.
+
+Ověřená BER je zobrazená menším písmem pod MER. Počítá se pouze z LSF
+nebo packet rámců s **platným CRC**. Falešný LSF uvnitř streamu se označí
+jako `Rejected` a nemůže změnit hlavní ukazatel. Stream rámce samotné
+nemají CRC, proto se do ověřené BER nezapočítávají. Pro LSF a packet se
+BER počítá z 368 kanálových bitů. MER a BER se v plugin kartách
+nezobrazují, zůstávají v panelu **M17 Diagnostics**.
+
+Při odmítnutém LSF uvnitř již otevřeného streamu synchronizátor vrátí celé
+spotřebované okno a krátce potlačí pouze opakované rozpoznání LSF. Skutečný
+`StreamSync` uvnitř okna tak zůstane dostupný a falešný kandidát nepohltí
+hlasový rámec. V klidu se plné okno nevrací, protože opakované znovuobjevení
+stejného šumového vzoru by mohlo vytvořit smyčku a zastavit RX i FFT.
 
 Na neúspěšných framech se do `audit_directory` ukládá
 `softbit_stats.json` s histogramem 16 binů, saturací a podbuzením.
