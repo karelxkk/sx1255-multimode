@@ -2,6 +2,7 @@
 
 #include "sx1255/diag/SystemStatistics.hpp"
 #include "sx1255/fm/FMDsp.hpp"
+#include "sx1255/fm/FmRxGate.hpp"
 #include "sx1255/fm/FmSvxlinkBridge.hpp"
 #include "sx1255/fm/SqlPty.hpp"
 #include "sx1255/frontend/ITransmit.hpp"
@@ -43,6 +44,7 @@ public:
         , m_preemph(fm::kPreemphTau, kSampleRate)
         , m_ctcssGen(m_config.ctcssTx, fm::kCtcssDevHz, kSampleRate)
         , m_confirmSamplesNeeded(static_cast<std::uint64_t>(m_config.squelchHoldMs) * 125U)
+        , m_rxGate(static_cast<std::size_t>(std::max(1, m_config.squelchHoldMs)) * 125U + 4096U)
     {
         if (m_useSvxlink) {
             m_sqlPty = std::make_unique<fm::SqlPty>(
@@ -81,31 +83,6 @@ public:
         m_lastRssiDb = rssi;
         const bool carrier = rssi >= m_config.rssiSquelchDb;
 
-        // Keep RF -> SVXLink alive during monitoring and during SVXLink TX.
-        // Only a digital mode that owns/claims the current block suppresses
-        // the FM audio feed.
-        if (m_useSvxlink && m_bridge && !m_rxBlocked) {
-            m_bridge->pushRxIq(block.samples, block.count);
-            const auto now = std::chrono::steady_clock::now();
-            if (carrier &&
-                (m_lastGateLog == std::chrono::steady_clock::time_point{} ||
-                 now - m_lastGateLog > std::chrono::seconds(1))) {
-                m_lastGateLog = now;
-                std::fprintf(stderr,
-                             "FM ACCEPT reason=%s rssi=%.1f\n",
-                             m_rxBlockReason.c_str(), rssi);
-            }
-        } else if (m_useSvxlink && m_bridge && m_rxBlocked && carrier) {
-            const auto now = std::chrono::steady_clock::now();
-            if (m_lastGateLog == std::chrono::steady_clock::time_point{} ||
-                now - m_lastGateLog > std::chrono::seconds(1)) {
-                m_lastGateLog = now;
-                std::fprintf(stderr,
-                             "FM REJECT reason=%s rssi=%.1f\n",
-                             m_rxBlockReason.c_str(), rssi);
-            }
-        }
-
         // The carrier must hold for a while before FM claims the channel: the
         // digital modes see the same carrier and they have higher priority, so
         // a too eager FM would steal e.g. a D-Star or M17 transmission before
@@ -121,13 +98,49 @@ public:
             std::clamp(0.5 + (rssi - m_config.rssiSquelchDb) / 20.0, 0.0, 1.0));
 
         const auto now = std::chrono::steady_clock::now();
+        // Do not forward the first part of a carrier to SVXLink before the
+        // digital detectors have had time to identify it.  Once FM is
+        // confirmed, flush the complete pre-roll so no analogue audio start is
+        // lost.  If M17/D-Star claims first, setRxBlocked()/clearPendingDetection()
+        // discards the gate instead.
+        if (m_useSvxlink && m_bridge) {
+            if (m_rxBlocked) {
+                m_rxGate.clear();
+                if (carrier &&
+                    (m_lastGateLog == std::chrono::steady_clock::time_point{} ||
+                     now - m_lastGateLog > std::chrono::seconds(1))) {
+                    m_lastGateLog = now;
+                    std::fprintf(stderr,
+                                 "FM REJECT reason=%s rssi=%.1f\n",
+                                 m_rxBlockReason.c_str(), rssi);
+                }
+            } else if (!carrier) {
+                m_rxGate.clear();
+            } else if (detected) {
+                const std::size_t buffered = m_rxGate.samples();
+                m_rxGate.flushTail([this](const ComplexFloat* samples, std::size_t count) {
+                    m_bridge->pushRxIq(samples, count);
+                }, kFmConnectPreRollSamples);
+                m_bridge->pushRxIq(block.samples, block.count);
+                if (m_lastGateLog == std::chrono::steady_clock::time_point{} ||
+                    now - m_lastGateLog > std::chrono::seconds(1)) {
+                    m_lastGateLog = now;
+                    std::fprintf(stderr,
+                                 "FM ACCEPT reason=%s rssi=%.1f prebuffer=%zu\n",
+                                 m_rxBlockReason.c_str(), rssi, buffered);
+                }
+            } else {
+                m_rxGate.buffer(block.samples, block.count);
+            }
+        }
+
         // During SVXLink TX there is no local FM session owner, but a renewed
         // local analogue carrier must still open SVXLink's squelch so its RX
         // audio reaches the bridge.  Digital modes set m_rxBlocked and take
         // the other branch, keeping their audio out of the FM bridge.
         if (m_useSvxlink && !m_rxBlocked &&
             m_rxBlockReason == "svxlink_tx_active") {
-            driveSql(carrier, now);
+            driveSql(detected, now);
         }
         if (carrier &&
             now - m_lastRssiLog > std::chrono::seconds(2)) {
@@ -160,6 +173,7 @@ public:
         m_preemph.reset();
         m_fmMod.reset();
         m_ctcssGen.reset();
+        m_rxGate.clear();
 
         if (m_useSvxlink) {
             ensureBridge(ctx.tx);
@@ -237,6 +251,7 @@ public:
         m_preemph.reset();
         m_fmMod.reset();
         m_ctcssGen.reset();
+        m_rxGate.clear();
         if (m_useSvxlink) {
             m_bridge->setSessionActive(false);
             // The RF<->SVXLink audio bridge stays alive across sessions (like
@@ -257,6 +272,7 @@ public:
     void clearPendingDetection() override
     {
         m_confirmSamples = 0;
+        m_rxGate.clear();
     }
 
     void setDetectionCounting(bool on) override
@@ -268,6 +284,11 @@ public:
     {
         m_rxBlocked = blocked;
         m_rxBlockReason = std::string(reason);
+        if (blocked) {
+            m_confirmSamples = 0;
+            m_detectionReported = false;
+            m_rxGate.clear();
+        }
         if (blocked && m_sqlPty && m_sqlOpen) {
             m_sqlPty->set(false);
             m_sqlOpen = false;
@@ -390,6 +411,9 @@ private:
     // grace period before closing, mirroring the confirmation used for open.
     static constexpr long        kSquelchCloseDelayMs = 150;
     static constexpr std::size_t kSquelchCloseBlocks  = 5;
+    // Only the last 20 ms bridges the confirmation boundary.  Flushing the
+    // complete squelch-hold buffer would create permanent SVXLink latency.
+    static constexpr std::size_t kFmConnectPreRollSamples = 2500;
 
     FmConfig m_config;
     SystemStatistics* m_stats;
@@ -419,6 +443,7 @@ private:
     std::chrono::steady_clock::time_point m_lastGateLog{};
     std::uint64_t m_confirmSamples = 0;
     std::uint64_t m_confirmSamplesNeeded = 87500;
+    fm::FmRxGate m_rxGate{87500};
     bool m_countDetections = true;
     bool m_detectionReported = false;
     std::chrono::steady_clock::time_point m_hangStart{};

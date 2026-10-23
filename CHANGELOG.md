@@ -2,6 +2,18 @@
 
 Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
+## [Nepublikováno]
+
+### Opraveno
+
+- FM/SVXLink RX: první část nosné se už neposílá do `snd-aloop` před
+  potvrzením FM. FM plugin drží IQ v prebufferu po dobu potvrzovacího okna;
+  při potvrzení FM odešle pouze 20ms spojku s aktuálním audiem, při detekci
+  M17/D-Star celý buffer zahodí. Digitální preamble se tak neprojeví jako
+  krátký FM záznam a nevznikne trvalá latence SVXLinku.
+- Blokace FM během digitální relace nyní maže i čekající RSSI potvrzení,
+  takže po odblokování nemůže FM okamžitě převzít starý potvrzený stav.
+
 ## [1.0.0-rc6] — 2026-10-23
 
 ### Přidáno

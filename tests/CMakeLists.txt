@@ -30,6 +30,10 @@ add_executable(test_fm_loopback test_fm_loopback.cpp)
 target_link_libraries(test_fm_loopback PRIVATE sx1255_core)
 add_test(NAME fm_loopback COMMAND test_fm_loopback)
 
+add_executable(test_fm_rx_gate test_fm_rx_gate.cpp)
+target_link_libraries(test_fm_rx_gate PRIVATE sx1255_core)
+add_test(NAME fm_rx_gate COMMAND test_fm_rx_gate)
+
 add_executable(test_fm_hang_timer test_fm_hang_timer.cpp)
 target_link_libraries(test_fm_hang_timer PRIVATE sx1255_core)
 add_test(NAME fm_hang_timer COMMAND test_fm_hang_timer)

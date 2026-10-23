@@ -40,6 +40,24 @@ Ve stavu `ACTIVE_SVXLINK`:
 
 Ve stavu `ACTIVE_M17_NETWORK` je FM RX blokován důvodem `tx_locked`.
 
+## Potvrzení FM až po digitálním okně
+
+FM plugin nesmí předávat první část nosné do `snd-aloop` dřív, než je
+vyloučen M17/D-Star. Samotné pořadí pluginů nestačí: M17 má sice vyšší
+prioritu, ale k validaci LSF potřebuje nejprve přijmout preamble.
+
+Proto `FmPlugin` ukládá RX IQ po dobu RSSI potvrzovacího okna
+(`squelch_hold_ms`, výchozí 700 ms):
+
+- dokud FM není potvrzeno, do SVXLinku se neposílá žádný vzorek,
+- při potvrzení FM se odešle pouze posledních 20 ms jako spojení
+  s aktuálním blokem; starší prebuffer se zahodí, aby nevznikla trvalá
+  latence SVXLinku,
+- při detekci M17/D-Star se prebuffer zruší celý,
+- při poklesu RSSI pod práh se prebuffer zruší,
+- `setRxBlocked()` a `clearPendingDetection()` ruší prebuffer i čekající
+  RSSI potvrzení.
+
 ## Logy
 
 ```text
