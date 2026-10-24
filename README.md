@@ -1,8 +1,8 @@
 # sx1255-multimode v1.0
 
-Multimode radioamatérský hotspot/repeater framework pro Raspberry Pi Zero 2 W
-a SX1255 HAT. Jeden RF frontend, společný IQ stream, režimy jako nezávislé
-pluginy.
+Multimode radioamatérský hotspot/repeater framework pro SX1255 HAT
+a Raspberry Pi Zero 2 W nebo Raspberry Pi 5. Jeden RF frontend, společný IQ
+stream, režimy jako nezávislé pluginy.
 
 > Autor: Karel Kadlec (OK1LBC) <xkk@post.cz>
 
