@@ -47,3 +47,7 @@ v hlavičce jako `úspora aktivní/vypnuto`.
   detekován. Při provozu se slabšími stanicemi je proto nutné práh snížit.
 - Režim se aktivuje pouze ve stavu `DETECTING`; aktivní relace, síťový
   přenos ani doběh FM se nepozastavují.
+- M17 a D-Star startují v klidovém režimu studené: první LSF/preamble může
+  přijít dřív, než se detektory stihnou synchronizovat, a FM pak může
+  vyhlásit nosnou. Pokud je prioritou okamžité digitální převzetí kanálu,
+  ponech `enabled: false`.
