@@ -105,15 +105,24 @@ install(FILES sx1255-multimode.yaml.example
 
 install(FILES deploy/systemd/sx1255-multimode.service
         DESTINATION /lib/systemd/system)
+install(FILES deploy/systemd/sx1255-operational-soak.service
+        DESTINATION /lib/systemd/system)
 
 install(PROGRAMS scripts/record_dataset.sh scripts/rc1_validate.sh scripts/deploy_test.sh
+                     scripts/operational_soak_monitor.py
         DESTINATION ${CMAKE_INSTALL_DATADIR}/sx1255-multimode/scripts)
 
 install(FILES README.md CHANGELOG.md RELEASE_NOTES.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/sx1255-multimode)
-install(FILES docs/POWER_SAVE.md docs/M17_FRAME_AUDIT.md
+install(FILES docs/DEPLOYMENT.md docs/RPI5_SX1255_HAT.md
+              docs/SX1255_HARDWARE.md
+              docs/POWER_SAVE.md docs/OPERATIONAL_SOAK.md
+              docs/M17_FRAME_AUDIT.md
               docs/M17_BER_JUMP_ANALYSIS.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/sx1255-multimode)
 
 install(FILES deploy/svxlink/svxlink.conf deploy/svxlink/README.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/sx1255-multimode/svxlink)
+
+install(FILES deploy/overlays/sx1255-pi5-duplex.dts
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/sx1255-multimode/overlays)

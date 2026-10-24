@@ -4,6 +4,13 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ## [Nepublikováno]
 
+### Přidáno
+
+- Operational soak monitor pro sedmidenní test skutečného provozu. Vzorkuje
+  systémd/PID, health, RSSI, režim, detekce, CPU, RSS, vlákna, teplotu,
+  disk, spectrum a M17 telemetrii bez zásahu do RX/TX. Stav přežívá restart
+  služby i celého Raspberry Pi.
+
 ### Opraveno
 
 - FM/SVXLink RX: první část nosné se už neposílá do `snd-aloop` před

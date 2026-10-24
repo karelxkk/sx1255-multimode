@@ -32,8 +32,8 @@ frontend:
     ptt: -1
 
   alsa:
-    capture: hw:GenericStereoAu,1,0    # I2S RX, 125 kSa/s stereo IQ
-    playback: hw:GenericStereoAu,0,0   # I2S TX, 125 kSa/s stereo IQ
+    capture: hw:SX1255I2S,1,0    # I2S RX, 125 kSa/s stereo IQ
+    playback: hw:SX1255I2S,0,0   # I2S TX, 125 kSa/s stereo IQ
 
   lna_gain: 42                # RX LNA zisk
   pga_gain: 0                 # RX PGA zisk
@@ -113,7 +113,7 @@ modes:
 
   m17:
     enabled: true             # zapnout M17 plugin
-    callsign: N0CALL
+    callsign: OK1LBC
     # --- Příjem packetů (SMS, poloha) -----------------------------------
     # Prahy synchronizace jsou euklidovské vzdálenosti v symbolové doméně
     # (ideální symboly jsou +-3), takže nižší hodnota = přísnější.  Naměřeno

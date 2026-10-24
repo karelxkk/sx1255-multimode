@@ -6,6 +6,10 @@ a implementuje rozhraní `ISX1255` (SPI + libgpiod + ALSA).
 > **Kernel a overlay:** připravené `rpi-zero2-kernel-6.18.54-myzero2+.deb` a
 > `genericstereoaudiocodec.dtbo` jsou assety release v1.0.0-rc6. Instalace je
 > popsána v [DEPLOYMENT.md](DEPLOYMENT.md).
+>
+> **Raspberry Pi 5 / Pi 500:** použij stock kernel a overlay
+> `sx1255-pi5-duplex`; úplný postup je v
+> [RPI5_SX1255_HAT.md](RPI5_SX1255_HAT.md).
 
 ## Architektura
 
@@ -16,7 +20,7 @@ RadioFrontend (vlastní ISX1255)
 SX1255Hardware : ISX1255
    |-- ISX1255SPI  (SX1255SpiDev, linux spidev)
    |-- ISX1255GPIO (SX1255Gpiod, libgpiod v2 přes dlopen)
-   `-- ALSA capture + playback + SPSCQueue<float IQ>
+   `-- ALSA capture + SPSCQueue RX + přímý ALSA playback
 ```
 
 Frontend **nezná** FM, D-Star, M17, SessionManager ani PluginRegistry. Pouze
@@ -25,12 +29,25 @@ přesouvá IQ vzorky a řídí RF. Data tečou takto:
 ```text
 ALSA capture (S32_LE stereo, 125 kSa/s)
   -> int32/2^31 -> ComplexFloat
-  -> SPSCQueue (lock-free)
+  -> SPSCQueue RX (lock-free)
   -> readIQ()  (RadioFrontend -> IQDispatcher -> M17Plugin)
 ```
 
-TX jde opačně: `writeIQ()` plní druhou SPSC frontu a playback vlákno zapisuje
-do ALSA. Díky odděleným vláknům RX běží i během TX (plný duplex).
+TX jde přímo z volajícího vlákna pluginu:
+
+```text
+plugin (FM/D-Star/M17)
+  -> writeIQ()
+  -> blocking snd_pcm_writei()
+  -> ALSA playback ring
+  -> RP1 I2S consumer
+  -> SX1255 (BCLK/LRCLK master)
+```
+
+V TX cestě není mezilehlá fronta. `writeIQ()` zapisuje do ALSA kruhového
+bufferu blokujícím voláním, takže tempo producenta přímo určují hodiny SX1255.
+RX capture vlákno běží i během TX; SX1255 zůstává v RX režimu a současně
+zapíná TX cestu, takže zařízení pracuje plně duplexně.
 
 ## Vrstvy
 
@@ -50,13 +67,29 @@ do ALSA. Díky odděleným vláknům RX běží i během TX (plný duplex).
 
 ### ALSA / IQ vrstva
 
-- Capture: 125 kSa/s, stereo S32_LE, period 4096 / buffer 16384.
-- Playback: stejné parametry.
+- Capture: S32_LE stereo, skutečný I2S clock 125 kSa/s, perioda 4096 rámců,
+  buffer 65536 rámců.
+- Playback: stejné parametry. Na Pi 5 může ALSA kvůli stub codecu hlásit
+  nominálních 96 kHz; fyzické tempo určuje externí BCLK z SX1255.
 - Normalizace převzatá z m17-gateway: `sample / 2147483648.0` (MSB-aligned
   S32 → float).
-- Dvě vlákna (capture + playback), dvě lock-free `SPSCQueue`, žádné aktivní
-  čekání (prázdná fronta = krátký sleep, plná = zahodí vzorek a počítá
-  overrun/underrun).
+- RX používá jedno capture vlákno a jednu lock-free `SPSCQueue`. Prázdná
+  fronta vede ke krátkému spánku; plná fronta zahodí další RX vzorek a zvýší
+  `rxOverruns`.
+- TX nemá samostatné playback vlákno ani druhou frontu. Plugin volá
+  `writeIQ()`; při plném ALSA bufferu se zápis zablokuje a pokračuje, až
+  hardware odešle vzorky. Částečné zápisy jsou dokončeny ve smyčce.
+- Při skutečných 125 kSa/s odpovídá buffer 65536 rámců přibližně 524 ms a
+  perioda 4096 rámců přibližně 33 ms.
+- Při zapnutí PTT se playback znovu otevře, SX1255 se přepne do TX a čeká se
+  na TX PLL lock. Před první IQ data se zapíše prefill 8192 nulových rámců
+  (přibližně 65 ms nosné), který překlene start TX DSP.
+- Při `-EPIPE`, `-ESTRPIPE`, `-EBADFD` nebo `-ENODEV` se playback znovu
+  připraví a zápis se omezeně opakuje. Krátké podtečení může způsobit
+  diskontinuitu vzorků a tím poškodit právě vysílaný rámec; obnova zajistí
+  pokračování dalších vzorků, ale ne doplnění již vynechaného času.
+- M17 a D-Star před vypnutím TX volají `drainTx()`, takže poslední rámce
+  a EOT se odešlou. FM lokální smyčka při ukončení stream rovnou zahodí.
 
 ## Převzaté části
 
@@ -105,11 +138,16 @@ do ALSA. Díky odděleným vláknům RX běží i během TX (plný duplex).
 `getStats()` / `stats()` vrací: RX vzorky, TX vzorky, RSSI, RX overruny, TX
 underruny, SPI chyby, ALSA chyby.
 
+Tyto frontendové čítače nejsou v současnosti součástí HTTP API. Trvalé TX
+podtečení je vidět v systémovém logu jako `SX1255 playback write failed`;
+přechodná obnova se loguje jako `SX1255 playback recover`.
+
 ## Testy (bez hardwaru)
 
 - `test_sx1255_spi` — registrové programování přes mock SPI.
 - `test_sx1255_gpio` — reset, TX/RX enable, PTT přes mock GPIO.
-- `test_sx1255_buffering` — SPSC fronta + overrun/underrun čítače.
+- `test_sx1255_buffering` — RX SPSC fronta a započtení TX vzorků při
+  nedostupném playback streamu.
 
 ## Kritérium úspěchu
 

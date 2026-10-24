@@ -1,7 +1,14 @@
-# Nasazení na Raspberry Pi Zero 2 W
+# Nasazení na Raspberry Pi
+
+> **Raspberry Pi 5 a Raspberry Pi 500:** nepoužívej postup s patchnutým kernelem
+> a overlayem `genericstereoaudiocodec` určeným pro Pi Zero 2 W. Pi 5 / 500
+> vyžaduje overlay `sx1255-pi5-duplex` a karty `SX1255I2S`. Ověřený postup je
+> v [RPI5_SX1255_HAT.md](RPI5_SX1255_HAT.md).
 
 Cílový systém: Raspberry Pi OS (64-bit, arm64), SX1255 HAT, sound karta pro
 125 kSa/s stereo IQ (viz `SX1255_HARDWARE.md`).
+
+Následující ruční postup je určen pro Raspberry Pi Zero 2 W.
 
 > **Doporučený postup:** použij připravený deb balíček — viz
 > [DEB_PACKAGE.md](DEB_PACKAGE.md). Níže je ruční postup pro vývojáře.

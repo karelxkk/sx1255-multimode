@@ -1,0 +1,19 @@
+[Unit]
+Description=sx1255-multimode seven-day operational monitor
+After=sx1255-multimode.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/sbin/sx1255-operational-soak \
+  --duration-seconds 604800 --interval-seconds 30
+Restart=on-failure
+RestartSec=30
+StateDirectory=sx1255-operational-soak
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

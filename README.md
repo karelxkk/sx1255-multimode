@@ -64,12 +64,17 @@ stanice; výchozí `auto` používá naposledy použitý lokální mód.
 
 ## Požadavky na hardware
 
-- Raspberry Pi Zero 2 W + SX1255 HAT (arm64),
-- kernel s podporou I2S vzorkování **125 000 Hz** (patch
+- Raspberry Pi Zero 2 W nebo Raspberry Pi 5 / Raspberry Pi 500 + SX1255 HAT
+  (arm64),
+- na Raspberry Pi 5 / Pi 500 stačí stock kernel a overlay
+  `sx1255-pi5-duplex`; ověřený postup je v
+  [docs/RPI5_SX1255_HAT.md](docs/RPI5_SX1255_HAT.md),
+- na Raspberry Pi Zero 2 W je potřeba kernel s podporou I2S vzorkování
+  **125 000 Hz** (patch
   `0001-ASoC-allow-125000-Hz-CONTINUOUS-for-sx1255_sound.patch`, balíček
-  `rpi-zero2-kernel-6.18.54-myzero2+.deb`),
-- device-tree overlay `genericstereoaudiocodec` (zkompilovaný
-  `genericstereoaudiocodec.dtbo`) a v `config.txt`:
+  `rpi-zero2-kernel-6.18.54-myzero2+.deb`) a overlay
+  `genericstereoaudiocodec`,
+- pro Pi Zero 2 W v `config.txt`:
 
   ```ini
   dtparam=spi=on
@@ -79,12 +84,14 @@ stanice; výchozí `auto` používá naposledy použitý lokální mód.
 
 - pro `fm.backend: svxlink` navíc modul `snd-aloop`.
 
-Oba soubory (`rpi-zero2-kernel-6.18.54-myzero2+.deb` a
-`genericstereoaudiocodec.dtbo`) jsou přiložené jako assety GitHub release
+Pro Pi Zero 2 W jsou oba soubory
+(`rpi-zero2-kernel-6.18.54-myzero2+.deb` a
+`genericstereoaudiocodec.dtbo`) přiložené jako assety GitHub release
 [v1.0.0-rc6](https://github.com/karelxkk/sx1255-multimode/releases/tag/v1.0.0-rc6).
 Odkazy pro stažení jsou vypsané v [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-Postup instalace kernelu a overlaye viz [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Postup instalace pro Pi Zero 2 W viz [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md),
+pro Pi 5 / Pi 500 viz [docs/RPI5_SX1255_HAT.md](docs/RPI5_SX1255_HAT.md).
 
 ## Build a testy
 
@@ -169,6 +176,7 @@ docs/                    architektura, plugin API, UML diagramy
 - [Architektura](docs/architecture.md)
 - [Plugin API](docs/plugin-api.md)
 - [Úspora CPU v klidovém režimu](docs/POWER_SAVE.md)
+- [Sedmidenní test reálného provozu](docs/OPERATIONAL_SOAK.md)
 - [D-Star gateway (DSRP)](docs/DSTAR_GATEWAY.md)
 - [Připojení FlexNetu](docs/FLEXNET_CONNECTION.md)
 - [Session Manager](docs/session-manager.md)
@@ -180,6 +188,7 @@ docs/                    architektura, plugin API, UML diagramy
 - [M17 reference comparison](docs/M17_REFERENCE_COMPARISON.md)
 - [Audit FM RX během SVXLink TX](docs/FM_SVXLINK_RX_AUDIT.md)
 - [SX1255 hardware frontend](docs/SX1255_HARDWARE.md)
+- [Zprovoznění SX1255 HAT na Raspberry Pi 5 / Pi 500](docs/RPI5_SX1255_HAT.md)
 - [Validace multimódové arbitráže](docs/MULTIMODE_VALIDATION.md)
 - [IQ capture & replay](docs/IQ_CAPTURE.md)
 - [Spectrum monitor a dashboard](docs/SPECTRUM_MONITOR.md)
