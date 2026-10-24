@@ -14,7 +14,6 @@ namespace sx1255::m17 {
 
 namespace {
 
-constexpr int kMaxRetries = 10;
 constexpr int kConnRetryMs = 5000;
 constexpr int kMaxConnRetryMs = 60000;
 constexpr int kHeartbeatTimeoutSec = 30;
@@ -339,19 +338,20 @@ void M17ReflectorClient::run()
             }
         }
 
-        if (gaveUp || !m_running.load())
+        if (!m_running.load())
             break;
 
         if (m_fd >= 0) {
             ::close(m_fd);
             m_fd = -1;
         }
-        retries++;
-        if (retries > kMaxRetries) {
+        if (gaveUp) {
             m_connected = false;
             setState(ReflectorState::Disconnected);
-            break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(kMaxConnRetryMs));
+            continue;
         }
+        retries++;
         const int backoff = std::min(connBackoffMs * (1 << std::min(retries, 4)), kMaxConnRetryMs);
         std::this_thread::sleep_for(std::chrono::milliseconds(backoff));
     }

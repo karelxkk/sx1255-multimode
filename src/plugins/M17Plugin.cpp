@@ -353,7 +353,11 @@ public:
             net.callsign = m_m17Config.callsign;
             m_reflector = std::make_unique<m17::M17ReflectorClient>(
                 net,
-                [this](m17::ReflectorState state) { m_reflectorState = state; },
+                [this](m17::ReflectorState state) {
+                    m_reflectorState = state;
+                    std::fprintf(stderr, "M17 reflector: %s\n",
+                                 m17::toString(state));
+                },
                 streamHandler,
                 packetHandler);
             m_reflector->start();
@@ -369,7 +373,11 @@ public:
                 : m_m17Config.bridge.callsign;
             m_bridge = std::make_unique<m17::M17ReflectorClient>(
                 net,
-                [this](m17::ReflectorState state) { m_bridgeState = state; },
+                [this](m17::ReflectorState state) {
+                    m_bridgeState = state;
+                    std::fprintf(stderr, "M17 bridge: %s\n",
+                                 m17::toString(state));
+                },
                 streamHandler,
                 packetHandler);
             m_bridge->start();
@@ -639,6 +647,11 @@ public:
         t.metrics["rf_packets"] = static_cast<double>(m_rfPackets);
         t.metrics["rf_packets_forwarded"] = static_cast<double>(m_rfPacketsForwarded);
         t.metrics["rf_packets_not_forwarded"] = static_cast<double>(m_rfPacketsNotForwarded);
+        t.metrics["rf_streams"] = static_cast<double>(m_rfStreams);
+        t.metrics["rf_streams_forwarded"] =
+            static_cast<double>(m_rfStreamsForwarded);
+        t.metrics["rf_streams_not_forwarded"] =
+            static_cast<double>(m_rfStreamsNotForwarded);
         t.metrics["net_packets_queued"] = static_cast<double>(m_netPacketsQueued);
         t.metrics["net_packets_sent"] = static_cast<double>(m_netPacketsSent);
         t.metrics["net_packets_dropped"] = static_cast<double>(m_netPacketsDropped);
@@ -1385,12 +1398,19 @@ private:
         dg.lsf = lsf;
         const std::size_t n = std::min(payload.size(), dg.payload.size());
         std::copy_n(payload.begin(), n, dg.payload.begin());
+        bool reflectorOk = false;
+        if (m_reflector) {
+            ++m_rfStreams;
+            reflectorOk = m_reflector->sendStream(dg);
+            if (reflectorOk)
+                ++m_rfStreamsForwarded;
+            else
+                ++m_rfStreamsNotForwarded;
+        }
         std::fprintf(stderr,
-                     "M17 RX->reflector: sid=%04x fn=%04x dst=%s src=%s last=%d\n",
+                     "M17 RX->reflector: sid=%04x fn=%04x dst=%s src=%s last=%d forwarded=%d\n",
                      sid, fn, lsf.dstCallsign().c_str(), lsf.srcCallsign().c_str(),
-                     lastFrame ? 1 : 0);
-        if (m_reflector)
-            m_reflector->sendStream(dg);
+                     lastFrame ? 1 : 0, reflectorOk ? 1 : 0);
         if (m_bridge)
             m_bridge->sendStream(dg);
     }
@@ -1529,6 +1549,9 @@ private:
     std::atomic<std::uint64_t> m_rfPacketsForwarded{0};
     std::atomic<std::uint64_t> m_rfPacketsNotForwarded{0};
     std::atomic<std::uint64_t> m_rfPacketsBadCrc{0};
+    std::atomic<std::uint64_t> m_rfStreams{0};
+    std::atomic<std::uint64_t> m_rfStreamsForwarded{0};
+    std::atomic<std::uint64_t> m_rfStreamsNotForwarded{0};
     std::atomic<std::uint64_t> m_netPacketsQueued{0};
     std::atomic<std::uint64_t> m_netPacketsSent{0};
     std::atomic<std::uint64_t> m_netPacketsDropped{0};

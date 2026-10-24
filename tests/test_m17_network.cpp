@@ -122,6 +122,8 @@ int main()
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     if (reflector.streams.load() < 1)
         return 6;
+    if (client.telemetry().txStreams < 1)
+        return 8;
 
     // The reflector echoed the datagram; wait for the client to receive it.
     for (int i = 0; i < 40 && client.telemetry().rxStreams < 1; ++i)

@@ -13,6 +13,10 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Opraveno
 
+- M17 reflektor se už po deseti neúspěšných pokusech trvale nevypne;
+  reconnect pokračuje s omezeným backoffem po celou dobu běhu služby.
+  Telemetrie rozlišuje skutečně odeslané stream rámce od neodeslaných a
+  stavové změny reflektoru/bridge se logují.
 - FM/SVXLink RX: první část nosné se už neposílá do `snd-aloop` před
   potvrzením FM. FM plugin drží IQ v prebufferu po dobu potvrzovacího okna;
   při potvrzení FM odešle pouze 20ms spojku s aktuálním audiem, při detekci
