@@ -184,12 +184,15 @@ network:
 
 # Úspora CPU v klidovém DETECTING režimu. Při IQ výkonu pod sleep_below_dbfs
 # se pozastaví pluginy FM/D-Star/M17; SX1255, IQ čtení, FFT a vodopád běží dál.
-# Jakmile blok překročí wake_above_dbfs, detekce okamžitě pokračuje. Mezi prahy
-# je hystereze, aby se režim nekmitel na šumu.
+# Posledních prebuffer_ms vzorků se při probuzení přehraje detektorům před
+# aktuálním blokem, aby digitální detekce neztratila začátek signálu.
+# Jakmile blok překročí wake_above_dbfs, detekce okamžitě pokračuje. Mezi
+# prahy je hystereze, aby se režim nekmitel na šumu.
 power_save:
   enabled: false
   sleep_below_dbfs: -57.0
   wake_above_dbfs: -55.0
+  prebuffer_ms: 250.0
 
 # Záznam živého IQ do souboru.
 recording:

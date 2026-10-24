@@ -13,6 +13,7 @@ power_save:
   enabled: true
   sleep_below_dbfs: -57.0
   wake_above_dbfs: -55.0
+  prebuffer_ms: 250.0
 ```
 
 Pokud není aktivní žádná relace a IQ výkon klesne pod
@@ -48,6 +49,7 @@ v hlavičce jako `úspora aktivní/vypnuto`.
 - Režim se aktivuje pouze ve stavu `DETECTING`; aktivní relace, síťový
   přenos ani doběh FM se nepozastavují.
 - M17 a D-Star startují v klidovém režimu studené: první LSF/preamble může
-  přijít dřív, než se detektory stihnou synchronizovat, a FM pak může
-  vyhlásit nosnou. Pokud je prioritou okamžité digitální převzetí kanálu,
-  ponech `enabled: false`.
+  přijít dřív, než se detektory stihnou synchronizovat. Proto se posledních
+  `prebuffer_ms` vzorků při probuzení přehraje detektorům ještě před aktuálním
+  blokem; reálná data pak navazují. Prebuffer neovlivní FFT, waterfall ani
+  IQ capture, protože ty stále vidí původní živý stream.

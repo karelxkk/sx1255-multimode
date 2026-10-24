@@ -134,7 +134,8 @@ int main()
         return 17;
     if (!config.powerSave.enabled ||
         config.powerSave.sleepBelowDbfs != -58.5 ||
-        config.powerSave.wakeAboveDbfs != -56.5) {
+        config.powerSave.wakeAboveDbfs != -56.5 ||
+        config.powerSave.prebufferMs != 250.0) {
         return 24;
     }
 
@@ -145,7 +146,8 @@ int main()
     if (serialized.find("438575000") == std::string::npos)
         return 10;
     if (serialized.find("sleep_below_dbfs: -58.5") == std::string::npos ||
-        serialized.find("wake_above_dbfs: -56.5") == std::string::npos) {
+        serialized.find("wake_above_dbfs: -56.5") == std::string::npos ||
+        serialized.find("prebuffer_ms: 250") == std::string::npos) {
         return 25;
     }
 

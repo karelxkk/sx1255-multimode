@@ -5,6 +5,7 @@
 #include "mock_plugin.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <memory>
 
 using namespace sx1255;
@@ -173,15 +174,22 @@ int main()
     // Idle power save: below the sleep threshold no plugin detector runs.
     // The first block above the wake threshold resumes detection immediately.
     {
+        std::vector<float> seenLevels;
         auto quietM17 = std::make_shared<test::MockPlugin>(
             "quiet-m17", Mode::M17, 30,
-            [](const IQBlock&) { return Detection{true, 1.0F}; });
+            [&seenLevels](const IQBlock& block) {
+                if (block.count > 0)
+                    seenLevels.push_back(std::abs(block.samples[0].i));
+                const bool loud = block.count > 0 &&
+                    std::abs(block.samples[0].i) >= 0.0018F;
+                return Detection{loud, loud ? 1.0F : 0.0F};
+            });
         PluginRegistry quietRegistry;
         quietRegistry.registerPlugin(quietM17);
         SessionManager quietSessions(SessionManager::Settings{120000ms, 0ms});
         quietSessions.start();
         IQDispatcher quietDispatcher(quietRegistry, quietSessions, nullptr);
-        quietDispatcher.setIdlePowerSave(true, -57.0, -55.0);
+        quietDispatcher.setIdlePowerSave(true, -57.0, -55.0, 250.0);
 
         const ComplexFloat lowSample{0.0005F, 0.0F};
         const IQBlock lowBlock{0, &lowSample, 1, 125000.0};
@@ -203,9 +211,13 @@ int main()
         const IQBlock loudBlock{2, &loudSample, 1, 125000.0};
         quietDispatcher.dispatch(loudBlock);
         if (quietDispatcher.idlePowerSaveActive() ||
-            quietM17->log.detects != 1 ||
+            quietM17->log.starts != 1 ||
             quietSessions.state() != SessionManager::State::ActiveM17) {
             return 36;
+        }
+        if (seenLevels.size() < 2 || seenLevels.front() >= 0.0018F ||
+            seenLevels.back() < 0.0018F) {
+            return 37;
         }
     }
 

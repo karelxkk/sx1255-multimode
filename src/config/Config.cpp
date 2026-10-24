@@ -396,9 +396,13 @@ Config loadConfig(const std::string& path)
             optDouble(*power, "sleep_below_dbfs", config.powerSave.sleepBelowDbfs);
         config.powerSave.wakeAboveDbfs =
             optDouble(*power, "wake_above_dbfs", config.powerSave.wakeAboveDbfs);
+        config.powerSave.prebufferMs =
+            optDouble(*power, "prebuffer_ms", config.powerSave.prebufferMs);
         if (config.powerSave.wakeAboveDbfs <= config.powerSave.sleepBelowDbfs)
             throw std::runtime_error(
                 "power_save.wake_above_dbfs must be greater than sleep_below_dbfs");
+        if (config.powerSave.prebufferMs < 0.0)
+            throw std::runtime_error("power_save.prebuffer_ms must not be negative");
     }
 
     if (hasKey(root, "recording")) {
@@ -575,6 +579,8 @@ std::string serializeConfig(const Config& config)
         << formatDouble(config.powerSave.sleepBelowDbfs) << '\n';
     out << "  wake_above_dbfs: "
         << formatDouble(config.powerSave.wakeAboveDbfs) << '\n';
+    out << "  prebuffer_ms: "
+        << formatDouble(config.powerSave.prebufferMs) << '\n';
     out << '\n';
 
     out << "recording:\n";

@@ -134,7 +134,8 @@ int main(int argc, char** argv)
         sx1255::IQDispatcher dispatcher(registry, sessions, nullptr);
         dispatcher.setIdlePowerSave(config.powerSave.enabled,
                                     config.powerSave.sleepBelowDbfs,
-                                    config.powerSave.wakeAboveDbfs);
+                                    config.powerSave.wakeAboveDbfs,
+                                    config.powerSave.prebufferMs);
 
         sx1255::spectrum::SpectrumAnalyzer spectrum(
             static_cast<std::size_t>(config.spectrum.fftSize), 125000.0,

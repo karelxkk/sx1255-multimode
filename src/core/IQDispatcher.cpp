@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <deque>
+#include <iterator>
 #include <utility>
 #include <vector>
 
@@ -47,13 +49,49 @@ void IQDispatcher::setIqSink(std::function<void(const ComplexFloat*, std::size_t
 }
 
 void IQDispatcher::setIdlePowerSave(bool enabled, double sleepBelowDbfs,
-                                    double wakeAboveDbfs)
+                                    double wakeAboveDbfs, double prebufferMs)
 {
     m_powerSaveEnabled = enabled;
     m_powerSaveSleepDb = sleepBelowDbfs;
     m_powerSaveWakeDb = wakeAboveDbfs;
-    if (!enabled)
+    m_powerSavePrebufferMax = static_cast<std::size_t>(
+        std::max(0.0, prebufferMs) * 125000.0 / 1000.0);
+    if (!enabled) {
         m_idlePowerSave = false;
+        m_wakePrebuffer.clear();
+    }
+}
+
+void IQDispatcher::appendWakePrebuffer(const IQBlock& block)
+{
+    if (m_powerSavePrebufferMax == 0)
+        return;
+    for (std::size_t i = 0; i < block.count; ++i) {
+        m_wakePrebuffer.push_back(block.samples[i]);
+        if (m_wakePrebuffer.size() > m_powerSavePrebufferMax)
+            m_wakePrebuffer.pop_front();
+    }
+}
+
+void IQDispatcher::flushWakePrebuffer(const IQBlock& liveBlock)
+{
+    if (m_wakePrebuffer.empty())
+        return;
+
+    std::vector<ComplexFloat> buffered(
+        std::make_move_iterator(m_wakePrebuffer.begin()),
+        std::make_move_iterator(m_wakePrebuffer.end()));
+    m_wakePrebuffer.clear();
+
+    const std::size_t chunk = std::max<std::size_t>(1, liveBlock.count);
+    for (std::size_t off = 0; off < buffered.size(); off += chunk) {
+        IQBlock replay;
+        replay.sequence = liveBlock.sequence;
+        replay.samples = buffered.data() + off;
+        replay.count = std::min(chunk, buffered.size() - off);
+        replay.sampleRateHz = liveBlock.sampleRateHz;
+        routeBlock(replay);
+    }
 }
 
 void IQDispatcher::dispatch(const IQBlock& block)
@@ -72,18 +110,30 @@ void IQDispatcher::dispatch(const IQBlock& block)
         if (sleeping && rssi >= m_powerSaveWakeDb) {
             m_idlePowerSave = false;
             std::fprintf(stderr,
-                         "POWER: detection resumed rssi=%.1f dBFS\n", rssi);
+                         "POWER: detection resumed rssi=%.1f dBFS prebuffer=%zu\n",
+                         rssi, m_wakePrebuffer.size());
+            flushWakePrebuffer(block);
         } else if (!sleeping && rssi < m_powerSaveSleepDb) {
             m_idlePowerSave = true;
             std::fprintf(stderr,
                          "POWER: detection paused rssi=%.1f dBFS\n", rssi);
-        }
-        if (m_idlePowerSave.load())
+            appendWakePrebuffer(block);
             return;
+        } else if (sleeping) {
+            appendWakePrebuffer(block);
+            return;
+        }
     } else {
         m_idlePowerSave = false;
+        if (!m_wakePrebuffer.empty())
+            m_wakePrebuffer.clear();
     }
 
+    routeBlock(block);
+}
+
+void IQDispatcher::routeBlock(const IQBlock& block)
+{
     // Exclusive phase: only the owning plugin sees the IQ stream.
     if (m_sessions.isActive()) {
         auto owner = m_sessions.owner();

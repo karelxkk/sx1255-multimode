@@ -3,6 +3,7 @@
 #include "sx1255/Types.hpp"
 
 #include <atomic>
+#include <deque>
 #include <functional>
 
 namespace sx1255 {
@@ -39,7 +40,8 @@ public:
     // measured IQ power is below the sleep threshold.  The frontend keeps
     // reading IQ, so FFT/waterfall continue and a later block can wake the
     // detectors immediately.
-    void setIdlePowerSave(bool enabled, double sleepBelowDbfs, double wakeAboveDbfs);
+    void setIdlePowerSave(bool enabled, double sleepBelowDbfs, double wakeAboveDbfs,
+                          double prebufferMs);
     bool idlePowerSaveActive() const { return m_idlePowerSave.load(); }
 
     // Process one IQ block.  Not thread-safe: call from the frontend thread.
@@ -48,6 +50,10 @@ public:
     std::uint64_t blocksProcessed() const;
 
 private:
+    void routeBlock(const IQBlock& block);
+    void appendWakePrebuffer(const IQBlock& block);
+    void flushWakePrebuffer(const IQBlock& liveBlock);
+
     PluginRegistry& m_registry;
     SessionManager& m_sessions;
     ITransmit*      m_tx;
@@ -63,6 +69,8 @@ private:
     bool   m_powerSaveEnabled = false;
     double m_powerSaveSleepDb = -57.0;
     double m_powerSaveWakeDb = -55.0;
+    std::size_t m_powerSavePrebufferMax = 31250;
+    std::deque<ComplexFloat> m_wakePrebuffer;
     std::atomic<bool> m_idlePowerSave{false};
 };
 

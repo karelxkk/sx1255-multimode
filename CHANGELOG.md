@@ -13,9 +13,10 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Opraveno
 
-- Klidová úspora `power_save` může při probuzení zpozdit M17/D-Star natolik,
-  že FM stihne vyhlásit nosnou. Pro reálný provoz s prioritou digitální
-  detekce se doporučuje `enabled: false`; chování je nyní zdokumentované.
+- Klidová úspora `power_save` uchovává posledních `prebuffer_ms` vzorků IQ
+  a při probuzení je přehraje detektorům před aktuálním blokem. Tím M17/D-Star
+  neztratí první preamble/LSF kvůli studenému startu; FFT, waterfall ani IQ
+  capture nevidí duplicitní data.
 - M17 reflektor se už po deseti neúspěšných pokusech trvale nevypne;
   reconnect pokračuje s omezeným backoffem po celou dobu běhu služby.
   Telemetrie rozlišuje skutečně odeslané stream rámce od neodeslaných a

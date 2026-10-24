@@ -186,6 +186,7 @@ struct PowerSaveConfig {
     bool   enabled = false;
     double sleepBelowDbfs = -57.0;
     double wakeAboveDbfs = -55.0;
+    double prebufferMs = 250.0;
 };
 
 struct RecordingConfig {
