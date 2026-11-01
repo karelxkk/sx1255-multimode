@@ -56,7 +56,7 @@ DStarPlugin::DStarPlugin(DStarConfig config, SystemStatistics* stats)
             });
         if (!m_gateway->start())
             std::fprintf(stderr, "D-Star gateway: UDP start failed\n");
-        m_watchdog = std::thread([this] { networkWatchdog(); });
+        m_watchdog = std::thread([this] { networkThread(); });
     }
 }
 
@@ -230,6 +230,20 @@ PluginTelemetry DStarPlugin::telemetry() const
         t.metrics["gateway_tx_headers"] = static_cast<double>(net.txHeaders);
         t.metrics["gateway_tx_frames"] = static_cast<double>(net.txData);
         t.metrics["gateway_invalid_packets"] = static_cast<double>(net.invalidPackets);
+        t.metrics["gateway_input_stream_resets"] =
+            static_cast<double>(net.inputStreamResets);
+    }
+    t.metrics["net_data_calls"] = static_cast<double>(m_netDataCalls.load());
+    t.metrics["net_data_ignored_active"] =
+        static_cast<double>(m_netDataIgnoredActive.load());
+    t.metrics["net_data_short"] = static_cast<double>(m_netDataShort.load());
+    t.metrics["net_data_queued"] = static_cast<double>(m_netDataQueued.load());
+    t.metrics["net_tx_active"] = m_netTxActive.load() ? 1.0 : 0.0;
+    t.metrics["net_tx_ended"] = static_cast<double>(m_netTxEnded.load());
+    t.metrics["net_tx_timeouts"] = static_cast<double>(m_netTxTimeouts.load());
+    {
+        std::lock_guard<std::mutex> lock(m_netMutex);
+        t.metrics["net_queue_samples"] = static_cast<double>(m_netTxQueue.size());
     }
     return t;
 }
@@ -247,6 +261,17 @@ void DStarPlugin::queueIq(const std::vector<ComplexFloat>& iq, bool force)
         return;
     }
     m_txQueue.insert(m_txQueue.end(), iq.begin(), iq.end());
+}
+
+void DStarPlugin::enqueueNetworkIq(const std::vector<ComplexFloat>& iq)
+{
+    std::lock_guard<std::mutex> lock(m_netMutex);
+    if (m_netTxQueue.size() + iq.size() > kMaxNetTxQueueSamples) {
+        std::fprintf(stderr, "D-Star NET TX: queue full, dropping %zu samples\n",
+                     iq.size());
+        return;
+    }
+    m_netTxQueue.insert(m_netTxQueue.end(), iq.begin(), iq.end());
 }
 
 void DStarPlugin::startTx()
@@ -324,65 +349,68 @@ void DStarPlugin::processNetworkHeader(const dstar::DStarHeader& header)
     if (!tx || !arbiter)
         return;
 
-    std::lock_guard<std::mutex> lock(m_txMutex);
-    if (m_netTxActive)
+    if (m_netTxActive.load())
         return;
     if (!arbiter->acquireTx(Mode::DStar)) {
         std::fprintf(stderr, "D-Star NET TX: blocked (channel busy or wrong mode)\n");
         return;
     }
 
-    m_netTxGranted = true;
+    m_netTxGranted.store(true);
     m_netTxMod->reset();
     const std::vector<ComplexFloat> iq =
         m_netTxMod->modulateHeader(header, m_config.txPreambleBytes);
-    if (!tx->setPtt(true)) {
-        std::fprintf(stderr, "D-Star NET TX: PTT on failed\n");
-        arbiter->releaseTx();
-        m_netTxGranted = false;
-        return;
+    {
+        std::lock_guard<std::mutex> lock(m_netMutex);
+        m_netEndQueued = false;
+        m_netTxQueue.clear();
+        m_netTxLastFrameTime = std::chrono::steady_clock::now();
     }
-    m_netTxActive = true;
-    tx->writeIQ(iq.data(), iq.size());
-    m_netTxLastFrameTime = std::chrono::steady_clock::now();
+    enqueueNetworkIq(iq);
+    m_netTxActive.store(true);
     std::fprintf(stderr, "D-Star NET TX: header acquired\n");
 }
 
 void DStarPlugin::processNetworkData(const std::uint8_t* data, std::size_t length, bool end)
 {
+    m_netDataCalls.fetch_add(1, std::memory_order_relaxed);
     if (m_active.load())
+    {
+        m_netDataIgnoredActive.fetch_add(1, std::memory_order_relaxed);
         return;
+    }
 
-    ITransmit* tx = m_tx.load();
-    ITxArbiter* arbiter = m_arbiter.load();
-    std::lock_guard<std::mutex> lock(m_txMutex);
-    if (!m_netTxGranted || !m_netTxActive || !tx)
+    if (!m_netTxGranted.load() || !m_netTxActive.load())
         return;
 
     if (end) {
         const std::vector<ComplexFloat> iq =
             m_netTxMod->modulateEnd(tailBlocksFor(m_config.txTailMs));
-        tx->writeIQ(iq.data(), iq.size());
-        tx->drainTx();
-        tx->setPtt(false);
-        m_netTxActive = false;
-        m_netTxGranted = false;
-        if (arbiter)
-            arbiter->releaseTx();
-        std::fprintf(stderr, "D-Star NET TX: ended\n");
+        enqueueNetworkIq(iq);
+        {
+            std::lock_guard<std::mutex> lock(m_netMutex);
+            m_netEndQueued = true;
+            m_netTxLastFrameTime = std::chrono::steady_clock::now();
+        }
         return;
     }
 
-    if (length < 12)
+    if (length < 12) {
+        m_netDataShort.fetch_add(1, std::memory_order_relaxed);
         return;
+    }
     dstar::DStarFrame frame;
     std::copy_n(data, frame.bytes.size(), frame.bytes.begin());
     const std::vector<ComplexFloat> iq = m_netTxMod->modulateFrame(frame);
-    tx->writeIQ(iq.data(), iq.size());
-    m_netTxLastFrameTime = std::chrono::steady_clock::now();
+    enqueueNetworkIq(iq);
+    {
+        std::lock_guard<std::mutex> lock(m_netMutex);
+        m_netTxLastFrameTime = std::chrono::steady_clock::now();
+    }
+    m_netDataQueued.fetch_add(1, std::memory_order_relaxed);
 }
 
-void DStarPlugin::networkWatchdog()
+void DStarPlugin::networkThread()
 {
     if (m_gateway)
         m_gateway->sendRegister();
@@ -390,7 +418,7 @@ void DStarPlugin::networkWatchdog()
     auto lastPoll = lastRegister;
 
     while (!m_watchdogStop.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
         if (m_gateway) {
             const auto now = std::chrono::steady_clock::now();
@@ -404,21 +432,88 @@ void DStarPlugin::networkWatchdog()
             }
         }
 
-        std::lock_guard<std::mutex> lock(m_txMutex);
-        if (!m_netTxActive)
+        if (!m_netTxActive.load())
             continue;
-        if (std::chrono::steady_clock::now() - m_netTxLastFrameTime <
+
+        std::vector<ComplexFloat> chunk;
+        bool endQueued = false;
+        std::chrono::steady_clock::time_point lastNetworkFrame;
+        {
+            std::lock_guard<std::mutex> lock(m_netMutex);
+            if (!m_netTxQueue.empty()) {
+                constexpr std::size_t kChunkSamples = 2500;
+                const std::size_t count = std::min(kChunkSamples, m_netTxQueue.size());
+                chunk.assign(m_netTxQueue.begin(),
+                             m_netTxQueue.begin() + static_cast<std::ptrdiff_t>(count));
+                m_netTxQueue.erase(
+                    m_netTxQueue.begin(),
+                    m_netTxQueue.begin() + static_cast<std::ptrdiff_t>(count));
+            }
+            endQueued = m_netEndQueued && m_netTxQueue.empty();
+            lastNetworkFrame = m_netTxLastFrameTime;
+        }
+
+        ITransmit* tx = m_tx.load();
+        if (tx && !chunk.empty()) {
+            std::lock_guard<std::mutex> lock(m_txMutex);
+            if (!m_netPttOn) {
+                if (!tx->setPtt(true)) {
+                    std::fprintf(stderr, "D-Star NET TX: PTT on failed\n");
+                } else {
+                    m_netPttOn = true;
+                }
+            }
+            if (m_netPttOn)
+                tx->writeIQ(chunk.data(), chunk.size());
+        }
+
+        if (endQueued) {
+            ITxArbiter* arbiter = m_arbiter.load();
+            if (tx) {
+                std::lock_guard<std::mutex> lock(m_txMutex);
+                tx->drainTx();
+                if (m_netPttOn) {
+                    tx->setPtt(false);
+                    m_netPttOn = false;
+                }
+            }
+            m_netTxActive.store(false);
+            m_netTxGranted.store(false);
+            {
+                std::lock_guard<std::mutex> lock(m_netMutex);
+                m_netEndQueued = false;
+            }
+            if (arbiter)
+                arbiter->releaseTx();
+            m_netTxEnded.fetch_add(1, std::memory_order_relaxed);
+            std::fprintf(stderr, "D-Star NET TX: ended\n");
+            continue;
+        }
+
+        if (std::chrono::steady_clock::now() - lastNetworkFrame <
             std::chrono::milliseconds(kNetTxTimeoutMs))
             continue;
 
-        ITransmit* tx = m_tx.load();
         ITxArbiter* arbiter = m_arbiter.load();
-        if (tx)
-            tx->setPtt(false);
-        m_netTxActive = false;
-        m_netTxGranted = false;
+        {
+            std::lock_guard<std::mutex> lock(m_txMutex);
+            if (tx && m_netPttOn) {
+                tx->setPtt(false);
+                m_netPttOn = false;
+            }
+        }
+        m_netTxActive.store(false);
+        m_netTxGranted.store(false);
+        {
+            std::lock_guard<std::mutex> lock(m_netMutex);
+            m_netTxQueue.clear();
+            m_netEndQueued = false;
+        }
         if (arbiter)
             arbiter->releaseTx();
+        if (m_gateway)
+            m_gateway->resetInputStream();
+        m_netTxTimeouts.fetch_add(1, std::memory_order_relaxed);
         std::fprintf(stderr, "D-Star NET TX: timeout, released\n");
     }
 }

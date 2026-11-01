@@ -214,7 +214,7 @@ void DStarGatewayClient::handlePacket(const std::uint8_t* data, std::size_t leng
         if (length < 49)
             return;
         const std::uint16_t id = static_cast<std::uint16_t>((data[5] << 8) | data[6]);
-        if (m_inId != 0)
+        if (m_inId.load(std::memory_order_acquire) != 0)
             return;
 
         const std::uint8_t* payload = data + kHeaderPayloadOffset;
@@ -227,7 +227,7 @@ void DStarGatewayClient::handlePacket(const std::uint8_t* data, std::size_t leng
             }
         }
 
-        m_inId = id;
+        m_inId.store(id, std::memory_order_release);
         m_rxHeaders.fetch_add(1, std::memory_order_relaxed);
         if (m_headerHandler)
             m_headerHandler(makeAirHeader(payload));
@@ -238,14 +238,14 @@ void DStarGatewayClient::handlePacket(const std::uint8_t* data, std::size_t leng
         if (length < 9)
             return;
         const std::uint16_t id = static_cast<std::uint16_t>((data[5] << 8) | data[6]);
-        if (id != m_inId)
+        if (id != m_inId.load(std::memory_order_acquire))
             return;
 
         const bool end = (data[7] & 0x40) != 0;
         const std::uint8_t seq = data[7] & 0x1F;
         const std::size_t dataLength = length - 9;
         if (end)
-            m_inId = 0;
+            m_inId.store(0, std::memory_order_release);
 
         std::array<std::uint8_t, 15> frame{};
         const std::size_t n = std::min(dataLength, frame.size());
@@ -370,6 +370,12 @@ bool DStarGatewayClient::sendRegister()
     return sendPacket(packet.data(), 6 + n);
 }
 
+void DStarGatewayClient::resetInputStream()
+{
+    if (m_inId.exchange(0, std::memory_order_acq_rel) != 0)
+        m_inputStreamResets.fetch_add(1, std::memory_order_relaxed);
+}
+
 unsigned int DStarGatewayClient::boundPort() const
 {
     if (m_fd < 0)
@@ -390,6 +396,7 @@ DStarGatewayTelemetry DStarGatewayClient::telemetry() const
     t.txHeaders = m_txHeaders.load();
     t.txData = m_txData.load();
     t.invalidPackets = m_invalidPackets.load();
+    t.inputStreamResets = m_inputStreamResets.load();
     std::lock_guard<std::mutex> lock(m_textMutex);
     t.lastText = m_lastText;
     return t;

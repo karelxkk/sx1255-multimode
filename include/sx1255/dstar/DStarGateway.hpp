@@ -29,6 +29,7 @@ struct DStarGatewayTelemetry {
     std::uint64_t txHeaders = 0;
     std::uint64_t txData    = 0;
     std::uint64_t invalidPackets = 0;
+    std::uint64_t inputStreamResets = 0;
     std::string  lastText;
 };
 
@@ -67,6 +68,13 @@ public:
     bool sendPoll();
     bool sendRegister();
 
+    // Clear an inbound DSRP stream that has been abandoned without an end
+    // packet. DStarGateway does not always emit DSRP END for a remote voice
+    // stream, so the network watchdog calls this after it releases the timed
+    // out RF transmission. A subsequent header must then be accepted even if
+    // the gateway reuses the same stream ID.
+    void resetInputStream();
+
     // Actual local UDP port after bind (useful with localPort == 0 in tests).
     unsigned int boundPort() const;
 
@@ -89,13 +97,14 @@ private:
     // DSRP stream state (repeater side).
     std::uint16_t m_outId = 0;
     std::uint8_t  m_outSeq = 0;
-    std::uint16_t m_inId = 0;
+    std::atomic<std::uint16_t> m_inId{0};
 
     mutable std::atomic<std::uint64_t> m_rxHeaders{0};
     mutable std::atomic<std::uint64_t> m_rxData{0};
     mutable std::atomic<std::uint64_t> m_txHeaders{0};
     mutable std::atomic<std::uint64_t> m_txData{0};
     mutable std::atomic<std::uint64_t> m_invalidPackets{0};
+    mutable std::atomic<std::uint64_t> m_inputStreamResets{0};
     mutable std::atomic<bool> m_runningTelemetry{false};
     mutable std::string m_lastText;
     mutable std::mutex m_textMutex;

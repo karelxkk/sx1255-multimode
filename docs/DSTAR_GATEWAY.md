@@ -131,12 +131,15 @@ mohla klíčovat i bez předchozího lokálního D-Star provozu.
 - `DATA` z gatewaye: DV rámce jsou re-modulovány se souvislým GMSK stavem.
 - konec streamu: vyšle se D-Star end-of-transmission sekvence, `drainTx` a
   odklíčování.
-- watchdog odklíčí, pokud gateway přestane posílat data déle než 1 s.
+- watchdog odklíčí, pokud gateway přestane posílat data déle než 3 s. Pokud
+  nepřišel DSRP END, současně uvolní příchozí stream ID, aby další relace
+  nezačala být tiše odmítána.
 - lokální RF příjem: hlavička a DV rámce se odesílají do gatewaye, EOT jako
   `NULL AMBE + END_PATTERN`.
 
 Stav a čítače jsou v `/api/plugins` (`gateway_state`, `gateway_rx_frames`,
-`gateway_tx_frames`, `gateway_invalid_packets`).
+`gateway_tx_frames`, `gateway_invalid_packets`,
+`gateway_input_stream_resets`, `net_tx_ended`, `net_tx_timeouts`).
 
 ## Ověření
 

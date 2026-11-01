@@ -28,6 +28,11 @@ public:
 
     bool setPtt(bool on) override
     {
+        // Model the real SX1255 path, where reopening playback and waiting for
+        // the TX PLL can block the writer thread while DSRP data keeps
+        // arriving. The gateway receive callback must not block on this.
+        if (on && pttOnCount.load() == 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
         ptt = on;
         pttOnCount += on ? 1 : 0;
         pttOffCount += on ? 0 : 1;
@@ -198,25 +203,75 @@ int main()
                  reinterpret_cast<sockaddr*>(&to), sizeof(to)) < 0)
         return 4;
 
+    // DStarGateway does not always emit a DSRP end packet. The first stream
+    // is therefore released by the inactivity timeout; that timeout must also
+    // clear the gateway's input stream state so the next header is accepted.
+    for (int i = 0; i < 800 && tx.pttOffCount.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (tx.pttOffCount.load() == 0)
+        return 5;
+    for (int i = 0;
+         i < 200 &&
+         (arbiter.acquired.load() ||
+          plugin.telemetry().metrics["gateway_input_stream_resets"] != 1.0);
+         ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (arbiter.acquired.load())
+        return 6;
+    if (tx.pttOnCount.load() != 1)
+        return 7;
+    if (plugin.telemetry().metrics["gateway_input_stream_resets"] != 1.0)
+        return 8;
+
+    // A second header without a preceding END must open a fresh stream.
+    headerPacket[5] = 0x56;
+    headerPacket[6] = 0x78;
+    if (::sendto(fakeFd, headerPacket.data(), headerPacket.size(), 0,
+                 reinterpret_cast<sockaddr*>(&to), sizeof(to)) < 0)
+        return 9;
+    for (int i = 0; i < 200 && tx.pttOnCount.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (tx.pttOnCount.load() != 2)
+        return 10;
+    if (plugin.telemetry().metrics["gateway_rx_headers"] != 2.0)
+        return 11;
+
+    std::array<std::uint8_t, 21> secondDataPacket = dataPacket;
+    secondDataPacket[5] = 0x56;
+    secondDataPacket[6] = 0x78;
+    if (::sendto(fakeFd, secondDataPacket.data(), secondDataPacket.size(), 0,
+                 reinterpret_cast<sockaddr*>(&to), sizeof(to)) < 0)
+        return 12;
+
+    // Finish the second stream explicitly so that PTT off is exercised after
+    // a recovered stream as well.
     std::array<std::uint8_t, 21> endPacket{};
     std::memcpy(endPacket.data(), "DSRP", 4);
     endPacket[4] = 0x21;
-    endPacket[5] = 0x12;
-    endPacket[6] = 0x34;
+    endPacket[5] = 0x56;
+    endPacket[6] = 0x78;
     endPacket[7] = 0x40;
     endPacket[8] = 0;
     for (int i = 0; i < 12; ++i)
         endPacket[9 + i] = 0x55;
+    const std::size_t pttOffBeforeEnd = tx.pttOffCount.load();
     if (::sendto(fakeFd, endPacket.data(), endPacket.size(), 0,
                  reinterpret_cast<sockaddr*>(&to), sizeof(to)) < 0)
-        return 5;
-
-    for (int i = 0; i < 200 && tx.pttOffCount.load() == 0; ++i)
+        return 13;
+    for (int i = 0; i < 200 && tx.pttOffCount.load() == pttOffBeforeEnd; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (tx.pttOffCount.load() == 0 || !tx.drained.load())
-        return 6;
+    if (tx.pttOffCount.load() == pttOffBeforeEnd)
+        return 14;
+    for (int i = 0;
+         i < 200 &&
+         (arbiter.acquired.load() ||
+          plugin.telemetry().metrics["net_tx_ended"] != 1.0);
+         ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (arbiter.acquired.load())
-        return 7;
+        return 15;
+    if (plugin.telemetry().metrics["net_tx_ended"] != 1.0)
+        return 16;
 
     ::close(fakeFd);
     return 0;

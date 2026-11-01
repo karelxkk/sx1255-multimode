@@ -11,6 +11,7 @@
 #include <mutex>
 #include <thread>
 #include <string_view>
+#include <vector>
 
 namespace sx1255 {
 
@@ -53,7 +54,8 @@ private:
     void stopTx();
     void processNetworkHeader(const dstar::DStarHeader& header);
     void processNetworkData(const std::uint8_t* data, std::size_t length, bool end);
-    void networkWatchdog();
+    void enqueueNetworkIq(const std::vector<ComplexFloat>& iq);
+    void networkThread();
 
     dstar::DStarDetector m_detector;
     std::unique_ptr<dstar::DStarTXModulator> m_txMod;
@@ -67,17 +69,28 @@ private:
     std::atomic<bool> m_active{false};
     bool m_txOn = false;
     bool m_endQueued = false;
-    bool m_netTxActive = false;
-    bool m_netTxGranted = false;
+    std::deque<ComplexFloat> m_netTxQueue;
+    mutable std::mutex m_netMutex;
+    std::atomic<bool> m_netTxActive{false};
+    std::atomic<bool> m_netTxGranted{false};
+    bool m_netEndQueued = false;
     std::chrono::steady_clock::time_point m_netTxLastFrameTime{};
     std::mutex m_txMutex;
+    bool m_netPttOn = false;
     std::thread m_watchdog;
     std::atomic<bool> m_watchdogStop{false};
+    std::atomic<std::uint64_t> m_netDataCalls{0};
+    std::atomic<std::uint64_t> m_netDataIgnoredActive{0};
+    std::atomic<std::uint64_t> m_netDataShort{0};
+    std::atomic<std::uint64_t> m_netDataQueued{0};
+    std::atomic<std::uint64_t> m_netTxEnded{0};
+    std::atomic<std::uint64_t> m_netTxTimeouts{0};
     float m_lastConfidence = 0.0F;
     bool m_countDetections = true;
     bool m_detectionReported = false;
 
-    static constexpr long kNetTxTimeoutMs = 1000;
+    static constexpr long kNetTxTimeoutMs = 3000;
+    static constexpr std::size_t kMaxNetTxQueueSamples = 1250000;
 };
 
 }  // namespace sx1255
