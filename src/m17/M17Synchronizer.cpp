@@ -233,19 +233,31 @@ void M17Synchronizer::push(float sample)
     evaluation.type = candidates[best].type;
     evaluation.kind = Kind::Blind;
 
-    // Follow mode: while a packet transmission is already being received, the
-    // packet sync word alone identifies its frames.  This must not depend on
-    // the blind best-of-six result: in a real transmission the pair windows
-    // (which look one frame ahead) can be much worse than the sync word
-    // itself, which used to leave the detection sitting right at the
+    // Follow mode: while a packet or stream transmission is already being
+    // received, the sync word alone identifies its frames.  This must not
+    // depend on the blind best-of-six result: in a real transmission the pair
+    // windows (which look one frame ahead) can be much worse than the sync
+    // word itself, which used to leave the detection sitting right at the
     // threshold.  An LSF wins over it - that is a 16 symbol match and means a
     // new transmission starts.
     m_lastFollow = false;
     if (m_expectedType == PacketSync && !suppressed(PacketSync) &&
         metrics.packetOnly < m_thresholds.follow &&
-        !(typ == LSFSync && dist < m_thresholds.lsf)) {
+        !(typ == LSFSync && dist < metrics.packetOnly)) {
         typ = PacketSync;
         dist = metrics.packetOnly;
+        m_lastFollow = true;
+        m_lastKind = Kind::Follow;
+        evaluation.distance = dist;
+        evaluation.threshold = m_thresholds.follow;
+        evaluation.type = typ;
+        evaluation.kind = Kind::Follow;
+    }
+    if (m_expectedType == StreamSync && !suppressed(StreamSync) &&
+        metrics.streamOnly < m_thresholds.follow &&
+        !(typ == LSFSync && dist < metrics.streamOnly)) {
+        typ = StreamSync;
+        dist = metrics.streamOnly;
         m_lastFollow = true;
         m_lastKind = Kind::Follow;
         evaluation.distance = dist;

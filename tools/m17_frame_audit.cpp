@@ -184,7 +184,9 @@ bool analyzeFile(const std::string& path, bool raw,
             syncPtr->retract(true);
         }
         frameRejected = false;
-        syncPtr->setExpectedType(decoder.syncedType() == PacketSync ? PacketSync : 0);
+        syncPtr->setExpectedType(
+            decoder.syncedType() == PacketSync ? PacketSync
+            : (decoder.syncedType() == StreamSync ? StreamSync : 0));
 
         FrameRecord record;
         record.file = path;

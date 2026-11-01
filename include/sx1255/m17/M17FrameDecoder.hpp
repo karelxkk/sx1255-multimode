@@ -262,6 +262,9 @@ private:
     std::uint16_t m_streamID = 0;
     std::uint16_t m_streamFN = 0;
     std::array<std::uint8_t, 30> m_lsfBytes{};
+    static constexpr int kStreamDuplicateWindow = 64;
+    std::array<std::uint16_t, kStreamDuplicateWindow> m_streamFnWindow{};
+    std::uint8_t m_streamFnWindowPos = 0;
     int m_errors = 0;
     int m_bits = 0;
     std::uint32_t m_streamCounter = 1;

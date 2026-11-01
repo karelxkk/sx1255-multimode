@@ -226,13 +226,16 @@ public:
                   m_synchronizer.retract(true);
               }
               m_frameRejected = false;
-              // Follow the decoder: while a packet transmission is running, a
-              // single packet sync word identifies its frames, so the last
-              // frame is not lost when the sync word that would follow it is
-              // missing or truncated.
-              m_synchronizer.setExpectedType(m_decoder.syncedType() == m17::PacketSync
-                                                 ? m17::PacketSync
-                                                 : 0);
+              // Follow the decoder: while a packet or stream transmission is
+              // running, a single sync word identifies its frames, so the
+              // last frame is not lost when the sync word that would follow
+              // it is missing or truncated.  Following streams is what keeps
+              // a false LSF correlation inside a voice transmission from
+              // stealing the detector away from the real stream sync words.
+              m_synchronizer.setExpectedType(
+                  m_decoder.syncedType() == m17::PacketSync ? m17::PacketSync
+                  : (m_decoder.syncedType() == m17::StreamSync ? m17::StreamSync
+                                                               : 0));
           },
           syncThresholds(config))
         , m_decoder(m17::Decoder::Callbacks{

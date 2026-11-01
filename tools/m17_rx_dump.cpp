@@ -16,6 +16,7 @@
 #include <deque>
 #include <cstdio>
 #include <fstream>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -60,12 +61,19 @@ int main(int argc, char** argv)
         return 1;
     }
     debug::IQFileHeader header;
-    if (!debug::readIQHeader(in, header)) {
-        std::printf("not an IQ recording: %s\n", argv[1]);
-        return 1;
+    bool raw = false;
+    if (!debug::readIQHeader(in, header) || !debug::validateIQHeader(header)) {
+        std::printf("no valid IQ header, treating as raw IQ\n");
+        in.clear();
+        in.seekg(0, std::ios::beg);
+        raw = true;
     }
-    std::printf("recording: %u Hz, %llu samples, %s\n", header.sampleRateHz,
-                static_cast<unsigned long long>(header.sampleCount), argv[1]);
+    if (raw) {
+        std::printf("raw IQ recording: %s\n", argv[1]);
+    } else {
+        std::printf("recording: %u Hz, %llu samples, %s\n", header.sampleRateHz,
+                    static_cast<unsigned long long>(header.sampleCount), argv[1]);
+    }
 
     ComplexDCRemoval dcr(0.9999);
     PolyphaseDecimator decimator(
@@ -81,9 +89,15 @@ int main(int argc, char** argv)
     };
     bool lsfRejected = false;
     bool frameRejected = false;
-    callbacks.onLSFBadCRC = [&](const LSF&, double ber) {
+    callbacks.onLSFBadCRC = [&](const LSF& lsf, double ber) {
         lsfRejected = true;
-        std::printf("  LSF bad crc ber=%.1f%%\n", ber);
+        std::printf("  LSF bad crc %s>%s type=%d ber=%.1f%%\n",
+                    lsf.srcCallsign().c_str(), lsf.dstCallsign().c_str(),
+                    lsf.lsfType(), ber);
+    };
+    callbacks.onStream = [](const LSF&, const std::vector<std::uint8_t>&,
+                            std::uint16_t sid, std::uint16_t fn, double ber) {
+        std::printf("  STREAM sid=%u fn=%u ber=%.1f%%\n", sid, fn & 0x7fff, ber);
     };
     callbacks.onPacket = [](const LSF& lsf, const std::vector<std::uint8_t>& payload, double ber) {
         std::printf("  PACKET %s>%s len=%zu ber=%.1f%% type=0x%02x \"%s\" hex=%s\n",
@@ -151,19 +165,34 @@ int main(int argc, char** argv)
             syncPtr->retract(true);
         }
         frameRejected = false;
-        syncPtr->setExpectedType(decoder.syncedType() == PacketSync ? PacketSync : 0);
+        syncPtr->setExpectedType(
+            decoder.syncedType() == PacketSync ? PacketSync
+            : (decoder.syncedType() == StreamSync ? StreamSync : 0));
     }, thresholds);
     syncPtr = &synchronizer;
 
     std::vector<ComplexFloat> block(4096);
     std::uint64_t pushed = 0;
+    double ncoPhase = 0.0;
+    const double ncoStep =
+        -2.0 * std::numbers::pi * 25000.0 / static_cast<double>(sampleRateSX1255);
     for (;;) {
         const std::size_t got = debug::readIQSamples(in, block.data(), block.size());
         if (got == 0)
             break;
         for (std::size_t n = 0; n < got; ++n) {
-            const CD sample{gain * static_cast<double>(block[n].i),
-                            gain * static_cast<double>(block[n].q)};
+            double i = gain * static_cast<double>(block[n].i);
+            double q = gain * static_cast<double>(block[n].q);
+            if (!raw) {
+                const double c = std::cos(ncoPhase);
+                const double s = std::sin(ncoPhase);
+                const double ri = i * c - q * s;
+                const double rq = i * s + q * c;
+                i = ri;
+                q = rq;
+                ncoPhase += ncoStep;
+            }
+            const CD sample{i, q};
             for (const CD dc : decimator.process(dcr.process(sample))) {
                 const double dem = afc.process(dc);
                 for (const double r : resampler.process(dem)) {

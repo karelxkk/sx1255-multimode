@@ -211,7 +211,9 @@ int main(int argc, char** argv)
             syncPtr->retract(true);
         }
         frameRejected = false;
-        syncPtr->setExpectedType(decoder.syncedType() == PacketSync ? PacketSync : 0);
+        syncPtr->setExpectedType(
+            decoder.syncedType() == PacketSync ? PacketSync
+            : (decoder.syncedType() == StreamSync ? StreamSync : 0));
     });
     syncPtr = &synchronizer;
     synchronizer.setEvaluationSink(static_cast<float>(o.nearMax),

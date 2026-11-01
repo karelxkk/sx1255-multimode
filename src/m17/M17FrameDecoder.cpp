@@ -932,6 +932,7 @@ Decoder::StreamFrame Decoder::decodeStreamFrame(const std::vector<SoftBit>& soft
         std::vector<std::uint8_t>(frameData.begin() + 1, frameData.begin() + 1 + 2 + 16),
         std::vector<bool>(StreamPuncturePattern.begin(), StreamPuncturePattern.end()),
         7, frameBits);
+    audit.channelErrors = e;
 
     const std::uint16_t fn = static_cast<std::uint16_t>(
         (static_cast<std::uint16_t>(frameData[1]) << 8) | frameData[2]);
@@ -1139,7 +1140,14 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
         }
         const StreamFrame f = decodeStreamFrame(softBits, audit);
         const std::uint16_t fn7 = f.fn & 0x7fff;
-        bool dropRepeat = fn7 == m_lastStreamFN;
+        bool inWindow = false;
+        for (const std::uint16_t seen : m_streamFnWindow) {
+            if (seen == fn7) {
+                inWindow = true;
+                break;
+            }
+        }
+        bool dropRepeat = fn7 == m_lastStreamFN || inWindow;
 
         if (!dropRepeat) {
             m_errors += f.e;
@@ -1180,8 +1188,12 @@ void Decoder::decodeFrame(std::uint16_t typ, const std::vector<SoftBit>& softBit
             }
             if (lastFrame)
                 reset();
-            else
+            else {
                 m_lastStreamFN = f.fn;
+                m_streamFnWindow[m_streamFnWindowPos] = fn7;
+                m_streamFnWindowPos = static_cast<std::uint8_t>(
+                    (m_streamFnWindowPos + 1) % kStreamDuplicateWindow);
+            }
         }
         return;
     }
@@ -1378,6 +1390,9 @@ void Decoder::reset()
     m_timeoutCnt = 0;
     m_lastPacketFN = 0xff;
     m_lastStreamFN = 0xffff;
+    for (auto &fn : m_streamFnWindow)
+        fn = 0xffff;
+    m_streamFnWindowPos = 0;
     m_lichParts = 0;
     m_errors = 0;
     m_bits = 0;
