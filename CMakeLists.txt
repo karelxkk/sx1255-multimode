@@ -88,6 +88,17 @@ target_link_libraries(m17_iq_audit PRIVATE sx1255_core)
 
 add_executable(m17-frame-audit tools/m17_frame_audit.cpp)
 target_link_libraries(m17-frame-audit PRIVATE sx1255_core)
+
+# Offline stream-only decoder that ignores LSF validity and decodes the
+# Codec2-3200 voice payload into a WAV file.
+find_library(CODEC2_LIBRARY codec2 REQUIRED)
+add_executable(m17_stream_pcm tools/m17_stream_pcm.cpp)
+target_link_libraries(m17_stream_pcm PRIVATE sx1255_core ${CODEC2_LIBRARY})
+
+# Build a synthetic M17 IQ stream from raw Codec2-3200 frame bytes.
+add_executable(m17_twotone_iq tools/m17_twotone_iq.cpp)
+target_link_libraries(m17_twotone_iq PRIVATE sx1255_core)
+
 add_subdirectory(tests)
 
 # ---------------------------------------------------------------------------

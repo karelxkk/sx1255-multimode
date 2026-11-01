@@ -1,51 +1,65 @@
 # RC1 Soak Report
 
-> Stav: **PENDING** — vyžaduje 7denní běh na reálném hardwaru
-> (Raspberry Pi Zero 2 W + SX1255 HAT + antény + reálný provoz).
+> Stav: **PODMÍNEČNÝ — první běh dokončen, čistý PASS ještě není potvrzen.**
+> Monitor běžel přesně 168 hodin, ale zaznamenal 46 změn PID služby
+> `sx1255-multimode`. Podle potvrzení operátora byly tyto restarty způsobené
+> testováním, nikoli samovolným pádem aplikace. Monitor sám plánovaný restart
+> od pádu nerozliší, proto tento běh nelze použít jako důkaz sedmidenní
+> bezrestartové stability.
 
-Tento report nelze vyplnit mimo cílové zařízení. Spusť na Pi Zero 2 W:
+## První běh
 
-```text
-scripts/rc1_validate.sh 604800   # 7 dní
-```
+| položka | hodnota |
+|---|---|
+| start | 2026-10-24 00:24:03 +02:00 |
+| konec | 2026-10-30 23:24:16 +01:00 |
+| skutečné trvání | 168,00 h |
+| vzorků po 30 s | 20 069 |
+| změny PID aplikace | 46 |
+| změny boot ID | 0 |
+| nejdelší souvislý běh PID | 94,55 h (2026-10-26 15:41–2026-10-30 14:14) |
+| restarty health komponent | 0 |
+| API timeout vzorky | 14 z 20 069 (0,07 %) |
+| max. RSS | 79 804 kB |
+| RSS první / poslední | 57 132 / 79 024 kB |
+| max. vláken | 17 |
+| max. teplota | 48,85 °C |
+| session FM / D-Star / M17 | 81 / 0 / 156 |
 
-Skript průběžně měří CPU/RAM, restarty subsystémů, watchdog události,
-detekce módů a IQ dumpy, a výsledky zapíše sem.
+Restarty aplikace se objevily v několika shlucích, především 24. 10. dopoledne
+a večer, 26. 10. odpoledne a 30. 10. odpoledne až večer. V těchto obdobích
+monitor viděl i krátké přechody přes `MainPID=0` a `ActiveState=failed`, což
+odpovídá testovacím stop/start zásahům. Bez operátorského markeru je nelze
+automaticky odlišit od skutečného selhání.
 
-## Sledované položky
+## Vyhodnocení
 
-- [ ] CPU (využití procesoru, špičky)
-- [ ] RAM (RSS, peak RSS, trend — nesmí růst)
-- [ ] restarty subsystémů (HealthMonitor `restarts`)
-- [ ] watchdog události (log `HealthMonitor`)
-- [ ] detekce módů (FM / D-Star / M17, false positives)
-- [ ] zachycené IQ dumpy (`automatic_capture.directory/capture_*.iq`)
+- [x] monitor dokončil celé 168hodinové okno
+- [ ] 7 dní bez restartu aplikace — 46 změn PID, podle operátora testovacích
+- [x] bez rebootu operačního systému — 0 změn boot ID
+- [x] bez restartu health komponent — 0 pro frontend, dispatcher, session
+  manager, HTTP i spectrum
+- [!] trend RSS nelze z tohoto běhu hodnotit jako čistý; data jsou přerušená
+  testovacími restarty a změnami buildu
+- [ ] **PASS** — chybí čistý běh bez plánovaných restartů
 
-## Naměřené hodnoty (na cíli)
+Závěr: první běh potvrdil, že monitor a služba vydrží celý týden provozu, ale
+nejde z něj uzavřít, že aplikace běžela celých sedm dní bez restartu. Nejdelší
+souvislý běh byl 94,55 h.
 
-| metrika | začátek | konec | poznámka |
-|---|---|---|---|
-| uptime | | | |
-| RSS (kB) | | | plochý trend = bez úniku |
-| CPU % | | | |
-| restarty subsystémů | | | cíl 0 |
-| watchdog událostí | | | |
-| relací FM/DStar/M17 | | | |
-| IQ dumpů | | | |
+## Navazující čistý běh
 
-## Závěr
-
-- [ ] 7 dní bez pádu procesu
-- [ ] bez úniku paměti
-- [ ] bez restartu subsystémů
-- [ ] spectrum monitor + dashboard aktivní po celou dobu
-- [ ] **PASS** / **FAIL**
+Nový běh bez plánovaných restartů byl spuštěn 2026-11-01 15:45:20 +01:00 a
+končí 2026-11-08 15:45:20 +01:00. V okamžiku startu měla služba
+`sx1255-multimode` PID 65608, `NRestarts=0` a uptime 94 850 s. Během tohoto
+okna se nesmí služba ani Raspberry Pi záměrně restartovat; jinak bude nutné
+test znovu spustit od začátku.
 
 ## Co je ověřeno bez hardwaru (v tomto workspace)
 
 - build v1.0.0-rc1 bez varování
 - 23/23 unit testů PASS (2 HTTP testy jsou v sandboxu SKIP, mimo sandbox PASS)
-- `sx1255-bench` na Raspberry Pi 500: FFT 4096 ~0.4 ms, waterfall ~1.4 µs/řádek,
+- `sx1255-bench` na Raspberry Pi 500: FFT 4096 ~0,4 ms, waterfall ~1,4 µs/řádek,
   M17 RX ~58× real-time
 - false positive audit na syntetických FM/DStar/M17/unknown datasetech: 0 FP
 - failure injection unit test (přetečení capture bufferu, prázdný IQ blok): PASS

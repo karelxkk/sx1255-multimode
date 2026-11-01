@@ -11,6 +11,12 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
   disk, spectrum a M17 telemetrii bez zásahu do RX/TX. Stav přežívá restart
   služby i celého Raspberry Pi.
 
+### Dokumentace
+
+- Zaznamenán první dokončený sedmidenní operational soak. Obsahoval 46
+  testovacích restartů, takže čistý PASS nebyl potvrzen; navazující běh bez
+  plánovaných restartů byl zahájen 2026-11-01. Viz `rc1-soak-report.md`.
+
 ### Opraveno
 
 - Klidová úspora `power_save` uchovává posledních `prebuffer_ms` vzorků IQ

@@ -61,3 +61,19 @@ Za úspěšný test se považuje běh po celou dobu bez:
 
 Krátké ojedinělé chyby se nesmí skrývat; zůstávají v `samples.jsonl` a
 v souhrnných počtech.
+
+## Výsledek prvního běhu
+
+První běh proběhl od 2026-10-24 00:24:03 +02:00 do
+2026-10-30 23:24:16 +01:00, tedy přesně 168 hodin. Monitor zaznamenal
+20 069 vzorků, 46 změn PID aplikace, 0 změn boot ID a 0 restartů health
+komponent. Podle potvrzení operátora byly změny PID způsobené testovacími
+zásahy. Nejdelší souvislý běh jednoho PID byl 94,55 h.
+
+Tento běh proto není čistý PASS: prokazuje, že monitor a služba vydrží týden
+provozu, ale neprokazuje sedm dní bez restartu aplikace. Detailní naměřené
+hodnoty a rozbor restartů jsou v [RC1 soak reportu](../rc1-soak-report.md).
+
+Navazující čistý běh byl spuštěn 2026-11-01 15:45:20 +01:00 a končí
+2026-11-08 15:45:20 +01:00. Po dobu tohoto okna se nesmí služba ani cílové
+Raspberry Pi záměrně restartovat.
