@@ -39,6 +39,7 @@ DStarPlugin::DStarPlugin(DStarConfig config, SystemStatistics* stats)
     , m_config(std::move(config))
     , m_stats(stats)
 {
+    m_detector.setInvert(m_config.rxInvert);
     if (m_config.gateway.enabled) {
         dstar::DStarGatewayConfig net;
         net.enabled       = true;

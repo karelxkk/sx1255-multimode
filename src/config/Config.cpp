@@ -292,6 +292,7 @@ Config loadConfig(const std::string& path)
 
     const YamlNode* dstar = child(*modes, "dstar");
     config.dstar.enabled = asBool(*dstar, "enabled");
+    config.dstar.rxInvert = optBool(*dstar, "rx_invert", config.dstar.rxInvert);
     config.dstar.callsign = optString(*dstar, "callsign", config.dstar.callsign);
     config.dstar.txPreambleBytes = static_cast<unsigned int>(
         optInt(*dstar, "tx_preamble_bytes", config.dstar.txPreambleBytes));
@@ -507,6 +508,7 @@ std::string serializeConfig(const Config& config)
     out << "      rx_highpass_hz: " << formatDouble(config.fm.svxlink.rxHighPassHz) << '\n';
     out << "  dstar:\n";
     out << "    enabled: " << (config.dstar.enabled ? "true" : "false") << '\n';
+    out << "    rx_invert: " << (config.dstar.rxInvert ? "true" : "false") << '\n';
     out << "    callsign: " << config.dstar.callsign << '\n';
     out << "    tx_preamble_bytes: " << config.dstar.txPreambleBytes << '\n';
     out << "    tx_tail_ms: " << config.dstar.txTailMs << '\n';

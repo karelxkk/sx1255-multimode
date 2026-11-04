@@ -43,6 +43,7 @@ public:
 
     Detection detect(const IQBlock& block);
     void reset();
+    void setInvert(bool invert) { m_invert = invert; }
 
     // Feed one already-demodulated D-Star bit directly (test seam for the
     // sync + header-validation state machine, bypassing the RF front end).
@@ -55,12 +56,17 @@ public:
                    DStarFrame* frame = nullptr);
 
     std::uint64_t frameSyncsSeen() const { return m_frameSyncs; }
+    std::uint64_t bitsSeen() const { return m_bitsSeen; }
+    unsigned int minFrameSyncDistance() const { return m_minFrameSyncDistance; }
+    unsigned int minDataSyncDistance() const { return m_minDataSyncDistance; }
     bool inData() const { return m_state == State::Data; }
 
 private:
     enum class State { None, Header, Data };
 
     bool processBit(bool bit);
+    bool processIfSample(float sample);
+    bool processSample(float sample);
     bool validateHeader();
     void processDataBit(bool bit);
     void pushEvent(DStarRxEvent event, const DStarHeader* header = nullptr,
@@ -71,9 +77,19 @@ private:
     void acs(const std::array<int, 8>& metric);
     void traceBack();
 
-    // RX front end (reused, not reimplemented: m17 FMDemodulator + resampler).
+    // RX front end: 125 kSa/s IQ -> 7.5 kHz channel filter -> 25 kSa/s
+    // discriminator -> 48 kSa/s GMSK bit detector.  This mirrors the proven
+    // DStarRepeater SX1255 receive chain; the M17 resampler is not suitable
+    // here because its default low-pass would remove most of the D-Star
+    // GMSK spectrum.
+    m17::ComplexDCRemoval m_dcr{0.999};
+    m17::PolyphaseDecimator m_channelFilter;
     m17::FMDemodulator m_fm;
-    m17::RationalResampler m_resampler{48, 125};  // 125 kSa/s -> 48 kSa/s
+    double m_resampleInT = 0.0;
+    double m_resampleNextOutT = 0.0;
+    float m_prevIf = 0.0F;
+    bool m_havePrevIf = false;
+    bool m_invert = false;
 
     // GMSK matched filter (43-tap Gaussian, BT=0.5).
     std::array<float, 43> m_filterTaps;
@@ -95,6 +111,9 @@ private:
     std::array<std::uint8_t, 83> m_headerBits{};
     std::uint32_t m_headerBitsCount = 0;
     std::uint64_t m_frameSyncs = 0;
+    std::uint64_t m_bitsSeen = 0;
+    unsigned int m_minFrameSyncDistance = 24;
+    unsigned int m_minDataSyncDistance = 24;
     DStarHeader m_lastHeader{};
 
     // DV data frame collection.

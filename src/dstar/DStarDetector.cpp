@@ -22,6 +22,23 @@ constexpr std::array<float, 43> kGaussianTaps = {
     0.000000000001037F, 0.000000000000065F, 0.000000000000003F,
 };
 
+// SX1255 / D-Star receive rates and front-end bandwidth.  The reference
+// DStarRepeater SX1255 controller filters the 125 kSa/s IQ stream to 7.5 kHz
+// before decimating to 25 kSa/s, demodulating and interpolating to 48 kSa/s.
+constexpr double kRfSampleRate = 125000.0;
+constexpr double kIfSampleRate = 25000.0;
+constexpr double kDStarSampleRate = 48000.0;
+constexpr double kChannelBandwidthHz = 7500.0;
+// designLowpassFIR() takes a cutoff normalised to Nyquist; the reference
+// DStarRepeater filter uses 7500 Hz relative to the 125 kSa/s sample rate.
+constexpr double kChannelCutoffNorm =
+    2.0 * kChannelBandwidthHz / kRfSampleRate;
+constexpr int kChannelFilterTaps = 65;
+constexpr int kChannelDecimation = 5;
+constexpr double kPeakDeviationHz = 1200.0;
+constexpr float kDemodScale = static_cast<float>(
+    kIfSampleRate / (2.0 * 3.14159265358979323846 * kPeakDeviationHz));
+
 // PLL symbol timing (4800 baud at 48 kSa/s = 10 samples/bit).
 constexpr std::uint32_t kPllMax = 0x10000;
 constexpr std::uint32_t kPllInc = kPllMax / 10;
@@ -299,6 +316,10 @@ constexpr std::array<std::uint8_t, 1320> kInterleaveTx = {
 }  // namespace
 
 DStarDetector::DStarDetector()
+    : m_channelFilter(
+          m17::designLowpassFIR(
+              kChannelFilterTaps, kChannelCutoffNorm, 1),
+          kChannelDecimation)
 {
     m_filterTaps = kGaussianTaps;
     m_inc = kIncUnlock;
@@ -326,6 +347,19 @@ void DStarDetector::reset()
     m_count = 0;
     m_filterBuf.fill(0.0F);
     m_filterPtr = 0;
+    m_bitsSeen = 0;
+    m_minFrameSyncDistance = 24;
+    m_minDataSyncDistance = 24;
+    m_dcr = m17::ComplexDCRemoval(0.999);
+    m_channelFilter = m17::PolyphaseDecimator(
+        m17::designLowpassFIR(
+            kChannelFilterTaps, kChannelCutoffNorm, 1),
+        kChannelDecimation);
+    m_fm = m17::FMDemodulator();
+    m_resampleInT = 0.0;
+    m_resampleNextOutT = 0.0;
+    m_prevIf = 0.0F;
+    m_havePrevIf = false;
 }
 
 Detection DStarDetector::detect(const IQBlock& block)
@@ -334,57 +368,87 @@ Detection DStarDetector::detect(const IQBlock& block)
 
     for (std::size_t n = 0; n < block.count; ++n) {
         const m17::CD sample{double(block.samples[n].i), double(block.samples[n].q)};
-        const double dem = m_fm.process(sample);
-        for (const double r : m_resampler.process(dem)) {
-            // GMSK matched filter.
-            const float val = static_cast<float>(r);
-            if (m_locked) {
-                m_accum += val;
-                m_count++;
-                if (m_count >= kDcOffsetCount) {
-                    m_accum /= float(kDcOffsetCount);
-                    m_offset = m_offset * 0.9F + m_accum * 0.1F;
-                    m_accum = 0.0F;
-                    m_count = 0;
-                }
-            }
-
-            m_filterBuf[static_cast<std::size_t>(m_filterPtr)] = val - m_offset;
-            m_filterPtr = (m_filterPtr + 1) % 43;
-            float out = 0.0F;
-            for (int t = 0; t < 43; ++t) {
-                int idx = m_filterPtr - 43 + t;
-                while (idx < 0) idx += 43;
-                out += m_filterTaps[static_cast<std::size_t>(t)] * m_filterBuf[static_cast<std::size_t>(idx)];
-            }
-
-            const bool bit = out > 0.0F;
-            if (bit != m_prevBit) {
-                if (m_pll < kPllMax / 2) m_pll += m_inc;
-                else m_pll -= m_inc;
-            }
-            m_prevBit = bit;
-            m_pll += kPllInc;
-            if (m_pll >= kPllMax) {
-                m_pll -= kPllMax;
-                // The GMSK modulator maps bit=1 to a negative baseband, so a
-                // negative matched-filter output (out <= 0) means data bit 1.
-                if (processBit(!bit))
-                    detected = true;
-            }
+        for (const m17::CD filtered : m_channelFilter.process(m_dcr.process(sample))) {
+            const float af = static_cast<float>(m_fm.process(filtered)) * kDemodScale;
+            detected = processIfSample(af) || detected;
         }
     }
 
     return {detected, detected ? 1.0F : 0.0F};
 }
 
+bool DStarDetector::processIfSample(float sample)
+{
+    // Linear interpolation from 25 kSa/s to 48 kSa/s, matching the reference
+    // DStarRepeater SX1255 controller.  No additional narrow low-pass is
+    // applied here; the 7.5 kHz complex channel filter already band-limits
+    // the discriminator output.
+    if (!m_havePrevIf) {
+        m_prevIf = sample;
+        m_havePrevIf = true;
+        return false;
+    }
+
+    m_resampleInT += 1.0;
+    const double step = kIfSampleRate / kDStarSampleRate;
+    bool detected = false;
+    while (m_resampleNextOutT <= m_resampleInT) {
+        const double frac = m_resampleNextOutT - (m_resampleInT - 1.0);
+        const float resampled =
+            m_prevIf + static_cast<float>(frac) * (sample - m_prevIf);
+        detected = processSample(resampled) || detected;
+        m_resampleNextOutT += step;
+    }
+    m_prevIf = sample;
+    return detected;
+}
+
+bool DStarDetector::processSample(float val)
+{
+    if (m_locked) {
+        m_accum += val;
+        m_count++;
+        if (m_count >= kDcOffsetCount) {
+            m_accum /= float(kDcOffsetCount);
+            m_offset = m_offset * 0.9F + m_accum * 0.1F;
+            m_accum = 0.0F;
+            m_count = 0;
+        }
+    }
+
+    m_filterBuf[static_cast<std::size_t>(m_filterPtr)] = val - m_offset;
+    m_filterPtr = (m_filterPtr + 1) % 43;
+    float out = 0.0F;
+    for (int t = 0; t < 43; ++t) {
+        int idx = m_filterPtr - 43 + t;
+        while (idx < 0) idx += 43;
+        out += m_filterTaps[static_cast<std::size_t>(t)]
+             * m_filterBuf[static_cast<std::size_t>(idx)];
+    }
+
+    const bool bit = out > 0.0F;
+    if (bit != m_prevBit) {
+        if (m_pll < kPllMax / 2) m_pll += m_inc;
+        else m_pll -= m_inc;
+    }
+    m_prevBit = bit;
+    m_pll += kPllInc;
+    if (m_pll >= kPllMax) {
+        m_pll -= kPllMax;
+        return processBit(m_invert ? bit : !bit);
+    }
+    return false;
+}
+
 bool DStarDetector::processBit(bool bit)
 {
+    m_bitsSeen++;
     m_pattern <<= 1;
     if (bit) m_pattern |= 1;
 
     if (m_state == State::None) {
         const unsigned int errs = countBits((m_pattern & kFrameSyncMask) ^ kFrameSyncData);
+        m_minFrameSyncDistance = std::min(m_minFrameSyncDistance, errs);
         if (errs <= kFrameSyncErrs) {
             m_locked = true;
             m_inc = kIncLock;
@@ -452,6 +516,7 @@ void DStarDetector::processDataBit(bool bit)
     bool syncSeen = false;
     if (m_dataFrameBits >= (kDvFrameBits - 3U)) {
         errs = countBits((m_pattern & kDataSyncMask) ^ kDataSyncData);
+        m_minDataSyncDistance = std::min(m_minDataSyncDistance, errs);
         if (errs <= kDataSyncErrs) {
             m_dataFrameBits = kDvFrameBits;
             m_dataBits = kMaxSyncBits;

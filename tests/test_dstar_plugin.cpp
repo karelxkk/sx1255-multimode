@@ -102,6 +102,7 @@ std::vector<ComplexFloat> makeSignal()
 int main()
 {
     DStarConfig config;
+    config.rxInvert = false;
     config.callsign = "OK1LBC";
     config.txPreambleBytes = 210;
     config.txTailMs = 50;

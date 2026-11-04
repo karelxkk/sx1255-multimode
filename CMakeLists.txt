@@ -99,6 +99,10 @@ target_link_libraries(m17_stream_pcm PRIVATE sx1255_core ${CODEC2_LIBRARY})
 add_executable(m17_twotone_iq tools/m17_twotone_iq.cpp)
 target_link_libraries(m17_twotone_iq PRIVATE sx1255_core)
 
+# Offline D-Star IQ audit with polarity and carrier-offset sweep.
+add_executable(dstar_iq_audit tools/dstar_iq_audit.cpp)
+target_link_libraries(dstar_iq_audit PRIVATE sx1255_core)
+
 add_subdirectory(tests)
 
 # ---------------------------------------------------------------------------

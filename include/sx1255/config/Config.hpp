@@ -80,6 +80,7 @@ struct FmConfig {
 
 struct DStarConfig {
     bool        enabled = true;
+    bool        rxInvert = true;   // SX1255 RX polarity measured on hardware
     std::string callsign = "OK1LBC";
     unsigned int txPreambleBytes = 210;
     unsigned int txTailMs = 50;

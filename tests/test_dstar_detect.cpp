@@ -52,7 +52,7 @@ std::vector<m17::CD> gmskModulate(const std::vector<bool>& bits)
     std::vector<double> baseband;
     baseband.reserve(bits.size() * 10);
     for (const bool bit : bits) {
-        const float in = bit ? -0.5F : 0.5F;
+        const float in = bit ? 0.5F : -0.5F;
         for (int i = 0; i < 10; ++i) {
             buf[static_cast<std::size_t>(idx)] = in;
             idx = (idx + 1) % 43;
@@ -66,9 +66,20 @@ std::vector<m17::CD> gmskModulate(const std::vector<bool>& bits)
         }
     }
 
-    // 48k -> 125k, then FM modulate: +-0.5 -> +-1200 Hz.
-    m17::BatchResampler resampler(125, 48);
-    const std::vector<double> up = resampler.process(baseband);
+    // 48k -> 125k, then FM modulate: +-0.5 -> +-1200 Hz.  Use the same
+    // sample-and-hold upsampler as the SX1255 D-Star transmitter.  A generic
+    // low-pass resampler here would band-limit the test signal to a few
+    // hundred Hz and hide front-end bandwidth bugs in the receiver.
+    std::vector<double> up;
+    up.reserve((baseband.size() * 125U) / 48U + 8U);
+    unsigned int acc = 0U;
+    for (const double sample : baseband) {
+        acc += 125000U;
+        while (acc >= 48000U) {
+            acc -= 48000U;
+            up.push_back(sample);
+        }
+    }
     m17::BatchFMModulator fm(125000.0);
     return fm.modulate(up, 2400.0);
 }
@@ -97,6 +108,7 @@ int main()
     // Full RF path: valid GMSK signal detected.
     {
         dstar::DStarDetector d2;
+        d2.setInvert(true);
         const auto iq = gmskModulate(buildHeaderBits(true));
         bool found = false;
         for (const auto& s : iq) {

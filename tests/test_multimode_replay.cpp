@@ -208,6 +208,7 @@ SessionManager::State runReplay(const std::string& path)
     Config config;
     config.fm.enabled = true;
     config.dstar.enabled = true;
+    config.dstar.rxInvert = false;
     config.m17.enabled = true;
 
     PluginRegistry registry;

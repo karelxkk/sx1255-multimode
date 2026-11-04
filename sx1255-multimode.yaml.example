@@ -99,6 +99,7 @@ modes:
 
   dstar:
     enabled: true             # zapnout D-Star plugin
+    rx_invert: true           # polarita D-Star RX na SX1255 (změřeno na hardware)
     callsign: OK1LBC           # RPT1/RPT2 pro lokální převaděč
     tx_preamble_bytes: 210
     tx_tail_ms: 50
