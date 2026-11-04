@@ -15,10 +15,13 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 - Zaznamenán první dokončený sedmidenní operational soak. Obsahoval 46
   testovacích restartů, takže čistý PASS nebyl potvrzen; navazující běh bez
-  plánovaných restartů byl zahájen 2026-11-01. Viz `rc1-soak-report.md`.
+  plánovaných restartů byl zahájen 2026-11-04. Viz `rc1-soak-report.md`.
 
 ### Opraveno
 
+- D-Star RX front-end používá 7,5 kHz kanálový filtr, decimaci 125 → 25 kSa/s
+  a lineární převzorkování na 48 kSa/s. Přidána měřená volba `dstar.rx_invert`
+  (default `true`) pro správnou polaritu SX1255 a offline audit IQ.
 - Klidová úspora `power_save` uchovává posledních `prebuffer_ms` vzorků IQ
   a při probuzení je přehraje detektorům před aktuálním blokem. Tím M17/D-Star
   neztratí první preamble/LSF kvůli studenému startu; FFT, waterfall ani IQ

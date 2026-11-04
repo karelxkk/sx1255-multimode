@@ -49,11 +49,13 @@ souvislý běh byl 94,55 h.
 
 ## Navazující čistý běh
 
-Nový běh bez plánovaných restartů byl spuštěn 2026-11-01 15:45:20 +01:00 a
-končí 2026-11-08 15:45:20 +01:00. V okamžiku startu měla služba
-`sx1255-multimode` PID 65608, `NRestarts=0` a uptime 94 850 s. Během tohoto
-okna se nesmí služba ani Raspberry Pi záměrně restartovat; jinak bude nutné
-test znovu spustit od začátku.
+Předchozí navazující běh byl zneplatněn nasazením opravy D-Star. Nový čistý
+běh byl spuštěn 2026-11-04 18:29:10 +01:00 a končí
+2026-11-11 18:29:10 +01:00. V okamžiku startu měla služba
+`sx1255-multimode` aktivní opravenou D-Star detekci, `NRestarts=0` a proběhly
+tři úspěšné lokální D-Star relace. Během tohoto okna se nesmí služba ani
+Raspberry Pi záměrně restartovat; jinak bude nutné test znovu spustit od
+začátku.
 
 ## Co je ověřeno bez hardwaru (v tomto workspace)
 

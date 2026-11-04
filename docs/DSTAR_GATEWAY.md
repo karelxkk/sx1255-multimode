@@ -11,6 +11,7 @@ RF, lokální RF provoz je naopak odesílán do brány.
 modes:
   dstar:
     enabled: true
+    rx_invert: true           # polarita D-Star RX na SX1255
     callsign: OK1LBC
     tx_preamble_bytes: 210
     tx_tail_ms: 50
@@ -29,6 +30,26 @@ network:
 Porty musí odpovídat konfiguraci gatewaye. Pro `dstarrepeaterd` to bývá
 `GatewayAddress/GatewayPort` a `LocalAddress/LocalPort`; pro samostatný
 `ircDDBGateway` si hodnoty ověř v jeho konfiguraci.
+
+`rx_invert: true` odpovídá změřené polaritě SX1255 RX cesty. Detektor používá
+kanálový filtr 7,5 kHz, decimaci 125 → 25 kSa/s a lineární převzorkování na
+48 kSa/s podle referenčního DStarRepeateru.
+
+### Hlavička z radiostanice
+
+Pro hotspot `OK1LBC B` s bránou `OK1LBC G` má lokální D-Star hlavička obsahovat:
+
+```text
+RPT1 = OK1LBC B
+RPT2 = OK1LBC G
+YOUR = CQCQCQ
+MY1  = osobní volací znak
+```
+
+U Icom ID-52 nastav `MENU > SET > My Station > My Call Sign`, potom v režimu
+DR zvol přístupový opakovač `OK1LBC B` (438,575 MHz, shift −7,6 MHz) a cíl
+`CQCQCQ`, případně `Use Reflector` → `XRFOK1 D`. Prázdné RPT1/RPT2/MY1 sice
+může mít platné CRC, ale gateway nemá kam relaci přiřadit.
 
 ### Instalace DStarGateway
 
@@ -146,4 +167,6 @@ Stav a čítače jsou v `/api/plugins` (`gateway_state`, `gateway_rx_frames`,
 ```text
 test_dstar_gateway     # DSRP UDP round-trip proti falešnému gateway procesu
 test_dstar_netplugin   # gateway -> plugin -> falešný ITransmit/arbiter
+dstar_iq_audit capture.iq 1.2 5
+                       # offline kontrola syncu, polarity a obsahu hlavičky
 ```

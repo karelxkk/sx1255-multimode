@@ -123,8 +123,9 @@ Dashboard pak běží na `http://<ip-pi>:8080/`.
 ## Známé problémy
 
 - První sedmidenní soak běh byl dokončen, ale obsahoval 46 restartů způsobených
-  testováním. Čistý PASS zatím není potvrzen; navazující běh bez plánovaných
-  restartů byl spuštěn 2026-11-01. Podrobnosti jsou v `rc1-soak-report.md`.
+  testováním. Čistý PASS zatím není potvrzen; aktuální běh bez plánovaných
+  restartů byl spuštěn 2026-11-04 a končí 2026-11-11. Podrobnosti jsou
+  v `rc1-soak-report.md`.
 - D-Star DV rámce se re-modulují po demodulaci bez AMBE FEC regenerace.
 - DStarGateway 0.7 hlásí neškodnou chybu `Cannot find the AMBE index for
   *linkedto*` při linkování; DCS data fungují.
