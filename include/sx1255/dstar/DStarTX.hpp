@@ -19,8 +19,9 @@ namespace sx1255::dstar {
 // SoundCardController writeBits(): one NRZ bit becomes 10 baseband samples
 // through the 43-tap Gaussian filter (BT=0.5), the 48 kSa/s baseband is
 // fractionally resampled to 125 kSa/s and FM-modulated with 1200 Hz peak
-// deviation.  All filter/resampler/FM state persists between calls so frames
-// are shaped with the filter history they need.
+// deviation.  The 48 -> 125 kSa/s conversion is sample-and-hold, matching the
+// reference SX1255 D-Star transmitter.  All filter/FM state persists between
+// calls so frames are shaped with the filter history they need.
 // ---------------------------------------------------------------------------
 class DStarTXModulator {
 public:
@@ -44,7 +45,7 @@ private:
 
     std::array<float, 43> m_filterBuf{};
     int m_filterPtr = 0;
-    m17::BatchResampler m_resampler{125, 48};
+    unsigned int m_upsampleAcc = 0;
     m17::BatchFMModulator m_fm{125000.0};
 };
 

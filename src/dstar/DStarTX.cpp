@@ -29,7 +29,7 @@ void DStarTXModulator::reset()
 {
     m_filterBuf.fill(0.0F);
     m_filterPtr = 0;
-    m_resampler.reset();
+    m_upsampleAcc = 0;
     m_fm.reset();
 }
 
@@ -40,7 +40,9 @@ std::vector<ComplexFloat> DStarTXModulator::modulateBits(const std::vector<bool>
     std::vector<double> baseband;
     baseband.reserve(bits.size() * 10);
     for (const bool bit : bits) {
-        const float input = bit ? -0.5F : 0.5F;
+        // SX1255 TX polarity: a D-Star data bit 1 is a positive FM
+        // deviation, matching the ID-52E/standard on-air signal.
+        const float input = bit ? 0.5F : -0.5F;
         for (int i = 0; i < 10; ++i) {
             m_filterBuf[static_cast<std::size_t>(m_filterPtr)] = input;
             m_filterPtr = (m_filterPtr + 1) % 43;
@@ -56,7 +58,19 @@ std::vector<ComplexFloat> DStarTXModulator::modulateBits(const std::vector<bool>
         }
     }
 
-    const std::vector<double> resampled = m_resampler.process(baseband);
+    // Sample-and-hold 48 kHz -> 125 kHz.  The reference SX1255 D-Star
+    // transmitter uses this exact conversion; a narrow generic resampler here
+    // removes too much of the GMSK spectrum and is not decodable by real
+    // D-Star radios.
+    std::vector<double> resampled;
+    resampled.reserve((baseband.size() * 125U) / 48U + 8U);
+    for (const double sample : baseband) {
+        m_upsampleAcc += 125000U;
+        while (m_upsampleAcc >= 48000U) {
+            m_upsampleAcc -= 48000U;
+            resampled.push_back(sample);
+        }
+    }
     // +-0.5 baseband maps to +-1200 Hz (D-Star GMSK peak deviation).
     const std::vector<m17::CD> iq = m_fm.modulate(resampled, 2400.0);
 

@@ -35,6 +35,10 @@ Porty musí odpovídat konfiguraci gatewaye. Pro `dstarrepeaterd` to bývá
 kanálový filtr 7,5 kHz, decimaci 125 → 25 kSa/s a lineární převzorkování na
 48 kSa/s podle referenčního DStarRepeateru.
 
+TX cesta používá sample-and-hold 48 → 125 kSa/s a kladnou FM deviaci pro
+datový bit 1. Tato kombinace byla ověřena příjmem na Icom ID-52E; původní
+úzký resampler a opačná polarita produkovaly signál, který stanice nedekódovala.
+
 ### Hlavička z radiostanice
 
 Pro hotspot `OK1LBC B` s bránou `OK1LBC G` má lokální D-Star hlavička obsahovat:
@@ -144,6 +148,10 @@ Směr síť → RF řídí arbiter. Výchozí `network.mode: auto` povolí síť
 jen toho módu, který byl naposledy použit lokálně. Protože D-Star gateway
 často běží bez lokální D-STAR stanice, nastav `network.mode: dstar`, aby brána
 mohla klíčovat i bez předchozího lokálního D-Star provozu.
+
+Při `network.mode: auto` je po každém restartu nutné nejprve jednou zaklíčovat
+lokálně D-Star, aby se poslední lokální mód nastavil na D-Star. Pro hotspot
+používaný výhradně pro D-Star je proto vhodnější `network.mode: dstar`.
 
 ## Provoz
 

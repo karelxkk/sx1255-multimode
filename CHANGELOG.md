@@ -22,6 +22,8 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 - D-Star RX front-end používá 7,5 kHz kanálový filtr, decimaci 125 → 25 kSa/s
   a lineární převzorkování na 48 kSa/s. Přidána měřená volba `dstar.rx_invert`
   (default `true`) pro správnou polaritu SX1255 a offline audit IQ.
+- D-Star TX používá sample-and-hold 48 → 125 kSa/s a kladnou deviaci pro
+  datový bit 1. Opravená TX cesta je dekódovatelná na Icom ID-52E.
 - Klidová úspora `power_save` uchovává posledních `prebuffer_ms` vzorků IQ
   a při probuzení je přehraje detektorům před aktuálním blokem. Tím M17/D-Star
   neztratí první preamble/LSF kvůli studenému startu; FFT, waterfall ani IQ

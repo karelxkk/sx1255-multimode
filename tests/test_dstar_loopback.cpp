@@ -82,6 +82,7 @@ int main()
     iq.insert(iq.end(), endIq.begin(), endIq.end());
 
     dstar::DStarDetector detector;
+    detector.setInvert(true);
     for (const ComplexFloat& sample : iq) {
         const IQBlock block{0, &sample, 1, 125000.0};
         detector.detect(block);
