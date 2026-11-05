@@ -171,6 +171,33 @@ int main()
         netSessions.releaseTx();
     }
 
+    // D-Star network TX must get its own state and still block local FM RX.
+    {
+        auto netFm = std::make_shared<test::MockPlugin>(
+            "net-fm-dstar", Mode::FM, 10,
+            [](const IQBlock&) { return Detection{false, 0.0F}; });
+        auto netDStar = std::make_shared<test::MockPlugin>(
+            "net-dstar", Mode::DStar, 20,
+            [](const IQBlock&) { return Detection{false, 0.0F}; });
+        PluginRegistry netRegistry;
+        netRegistry.registerPlugin(netFm);
+        netRegistry.registerPlugin(netDStar);
+        SessionManager netSessions(SessionManager::Settings{120000ms, 0ms});
+        netSessions.start();
+        netSessions.setPreferredNetworkMode(Mode::DStar);
+        if (!netSessions.acquireTx(Mode::DStar))
+            return 34;
+        IQDispatcher netDispatcher(netRegistry, netSessions, nullptr);
+        netDispatcher.dispatch(block);
+        if (netSessions.state() != SessionManager::State::ActiveDStarNetwork ||
+            netFm->log.detectsWhileBlocked != 1 ||
+            netFm->rxBlockReason != "tx_locked" ||
+            netDStar->log.detects != 1) {
+            return 35;
+        }
+        netSessions.releaseTx();
+    }
+
     // Idle power save: below the sleep threshold no plugin detector runs.
     // The first block above the wake threshold resumes detection immediately.
     {

@@ -64,11 +64,18 @@ int main()
         return 11;
     if (!sessions.acquireTx(Mode::DStar))
         return 12;
-    if (sessions.state() != SessionManager::State::ActiveM17Network)
+    if (sessions.state() != SessionManager::State::ActiveDStarNetwork)
         return 13;
     sessions.releaseTx();
     if (sessions.state() != SessionManager::State::Idle)
         return 14;
+
+    sessions.setPreferredNetworkMode(Mode::M17);
+    if (!sessions.acquireTx(Mode::M17))
+        return 19;
+    if (sessions.state() != SessionManager::State::ActiveM17Network)
+        return 20;
+    sessions.releaseTx();
 
     // A data packet must reach the radio even when the network audio source is
     // another mode: an APRS message cannot be lost just because the last local

@@ -42,6 +42,7 @@ public:
         ActiveDStar,
         ActiveM17,
         ActiveM17Network,
+        ActiveDStarNetwork,
         ActiveSvxlink,
         Timeout,
         ReturnToIdle,

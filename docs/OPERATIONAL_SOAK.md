@@ -74,7 +74,7 @@ Tento běh proto není čistý PASS: prokazuje, že monitor a služba vydrží t
 provozu, ale neprokazuje sedm dní bez restartu aplikace. Detailní naměřené
 hodnoty a rozbor restartů jsou v [RC1 soak reportu](../rc1-soak-report.md).
 
-Předchozí navazující běhy byly zneplatněny nasazením oprav D-Star RX a TX.
-Nový čistý běh byl spuštěn 2026-11-04 18:58:08 +01:00 a končí
-2026-11-11 18:58:08 +01:00. Po dobu tohoto okna se nesmí služba ani cílové
-Raspberry Pi záměrně restartovat.
+Předchozí navazující běhy byly zneplatněny nasazením oprav D-Star RX, TX a
+stavu síťového D-Star. Nový čistý běh byl spuštěn 2026-11-05 21:43:10 +01:00
+a končí 2026-11-12 21:43:10 +01:00. Po dobu tohoto okna se nesmí služba ani
+cílové Raspberry Pi záměrně restartovat.

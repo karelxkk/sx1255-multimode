@@ -154,7 +154,8 @@ void IQDispatcher::routeBlock(const IQBlock& block)
                 if (plugin) {
                     if (plugin->mode() == Mode::FM) {
                         const bool digitalTx =
-                            networkState == SessionManager::State::ActiveM17Network;
+                            networkState == SessionManager::State::ActiveM17Network ||
+                            networkState == SessionManager::State::ActiveDStarNetwork;
                         const bool blocked = digitalTx || digitalDetected;
                         const char* reason = digitalTx
                             ? "tx_locked"

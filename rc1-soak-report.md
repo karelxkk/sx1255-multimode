@@ -49,12 +49,12 @@ souvislý běh byl 94,55 h.
 
 ## Navazující čistý běh
 
-Předchozí navazující běhy byly zneplatněny nasazením oprav D-Star RX a TX.
-Nový čistý běh byl spuštěn 2026-11-04 18:58:08 +01:00 a končí
-2026-11-11 18:58:08 +01:00. V okamžiku startu byla ověřená obousměrná D-Star
-komunikace s ID-52E a služba měla `NRestarts=0`. Během tohoto okna se nesmí
-služba ani Raspberry Pi záměrně restartovat; jinak bude nutné test znovu
-spustit od začátku.
+Předchozí navazující běhy byly zneplatněny nasazením oprav D-Star RX, TX a
+stavu síťového D-Star. Nový čistý běh byl spuštěn 2026-11-05 21:43:10 +01:00
+a končí 2026-11-12 21:43:10 +01:00. V okamžiku startu byla ověřená obousměrná
+D-Star komunikace s ID-52E, správný stav `ACTIVE_DSTAR_NETWORK` a služba měla
+`NRestarts=0`. Během tohoto okna se nesmí služba ani Raspberry Pi záměrně
+restartovat; jinak bude nutné test znovu spustit od začátku.
 
 ## Co je ověřeno bez hardwaru (v tomto workspace)
 

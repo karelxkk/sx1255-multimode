@@ -20,6 +20,7 @@ bool isActiveState(SessionManager::State state)
         case SessionManager::State::ActiveDStar:
         case SessionManager::State::ActiveM17:
         case SessionManager::State::ActiveM17Network:
+        case SessionManager::State::ActiveDStarNetwork:
         case SessionManager::State::ActiveSvxlink:
             return true;
         default:
@@ -114,6 +115,7 @@ const char* SessionManager::toString(State state)
         case State::ActiveDStar:  return "ACTIVE_DSTAR";
         case State::ActiveM17:    return "ACTIVE_M17";
         case State::ActiveM17Network: return "ACTIVE_M17_NETWORK";
+        case State::ActiveDStarNetwork: return "ACTIVE_DSTAR_NETWORK";
         case State::ActiveSvxlink:    return "ACTIVE_SVXLINK";
         case State::Timeout:      return "TIMEOUT";
         case State::ReturnToIdle: return "RETURN_TO_IDLE";
@@ -214,7 +216,12 @@ bool SessionManager::acquireTx(Mode mode)
     }
 
     m_owner.reset();
-    m_state = (mode == Mode::FM) ? State::ActiveSvxlink : State::ActiveM17Network;
+    if (mode == Mode::FM)
+        m_state = State::ActiveSvxlink;
+    else if (mode == Mode::DStar)
+        m_state = State::ActiveDStarNetwork;
+    else
+        m_state = State::ActiveM17Network;
     m_sessionId = ++m_sessionCounter;
     m_activeSince = Clock::now();
     (void)mode;
@@ -233,7 +240,12 @@ bool SessionManager::acquireTxPacket(Mode mode)
         return false;
 
     m_owner.reset();
-    m_state = (mode == Mode::FM) ? State::ActiveSvxlink : State::ActiveM17Network;
+    if (mode == Mode::FM)
+        m_state = State::ActiveSvxlink;
+    else if (mode == Mode::DStar)
+        m_state = State::ActiveDStarNetwork;
+    else
+        m_state = State::ActiveM17Network;
     m_sessionId = ++m_sessionCounter;
     m_activeSince = Clock::now();
     return true;
@@ -242,7 +254,9 @@ bool SessionManager::acquireTxPacket(Mode mode)
 void SessionManager::releaseTx()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_state != State::ActiveM17Network && m_state != State::ActiveSvxlink)
+    if (m_state != State::ActiveM17Network &&
+        m_state != State::ActiveDStarNetwork &&
+        m_state != State::ActiveSvxlink)
         return;
     m_owner.reset();
     m_state = State::Idle;   // the dispatcher will move Idle -> Detecting

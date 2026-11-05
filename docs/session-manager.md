@@ -8,6 +8,9 @@ IDLE -> DETECTING -> ACTIVE_FM | ACTIVE_DSTAR | ACTIVE_M17
                           +-> TIMEOUT -> RETURN_TO_IDLE -> IDLE
                           |
 ACTIVE_* (normální konec) -> RETURN_TO_IDLE -> IDLE
+
+Network TX používá samostatné stavy:
+ACTIVE_SVXLINK | ACTIVE_DSTAR_NETWORK | ACTIVE_M17_NETWORK
 ```
 
 | Stav | Význam |
@@ -15,6 +18,9 @@ ACTIVE_* (normální konec) -> RETURN_TO_IDLE -> IDLE
 | `Idle` | klid, čekání na start |
 | `Detecting` | monitoring, detekce u všech pluginů |
 | `ActiveFm` / `ActiveDStar` / `ActiveM17` | exkluzivní vlastnictví |
+| `ActiveSvxlink` | síťový TX ze SvxLinku |
+| `ActiveDStarNetwork` | D-Star stream z gatewaye/reflektoru do RF |
+| `ActiveM17Network` | M17 stream z reflektoru do RF |
 | `Timeout` | relace překročila limit |
 | `ReturnToIdle` | odklad před návratem do Idle (grace period) |
 
