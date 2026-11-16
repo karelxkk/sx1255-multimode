@@ -18,6 +18,7 @@ cmake --build build
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
+chmod 0755 "$STAGE"
 
 DESTDIR="$STAGE" cmake --install build
 

@@ -1,3 +1,18 @@
+sx1255-multimode (1.0.0~rc7-1) unstable; urgency=medium
+
+  * Raspberry Pi Zero 2 W now uses the official Raspberry Pi security kernel
+    instead of a custom myzero2 kernel. Ship the SX1255 125 kSa/s SPDIF
+    support as DKMS modules and include the DKMS sources in the package.
+  * D-Star RX/TX polarity, bandwidth, sample-rate conversion and network TX
+    state fixes.
+  * Close ended D-Star network streams immediately and suppress false
+    OK1LBC-DS micro-talkers with a three-frame startup gate and one-frame
+    look-behind buffer.
+  * Include the clean 168-hour operational soak result: 20075 samples, zero
+    application restarts and zero boot-id changes.
+
+ -- Karel Kadlec (OK1LBC) <xkk@post.cz>  Mon, 16 Nov 2026 22:45:00 +0100
+
 sx1255-multimode (1.0.0~rc6-1) unstable; urgency=medium
 
   * M17 stream: reject false LSF/packet syncs without creating a detection

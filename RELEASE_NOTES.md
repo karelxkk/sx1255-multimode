@@ -1,5 +1,29 @@
 # Release Notes — sx1255-multimode
 
+## v1.0.0-rc7 — stock kernel a čistý sedmidenní soak
+
+RC7 je první release, který na Raspberry Pi Zero 2 W používá oficiální
+bezpečnostní Raspberry Pi kernel místo vlastního `myzero2` jádra.
+
+- Ověřený stock kernel: `6.18.60+rpt-rpi-v8`.
+- Podpora 125 kSa/s pro SX1255 je v DKMS modulech `sx1255-spdif/1.0`.
+- Release už neobsahuje vlastní kernel image ani zranitelný
+  `rpi-zero2-kernel-6.18.54-myzero2+.deb`.
+- D-Star RX a TX opravy: správná polarita, kanálová šířka, sample-and-hold
+  převod 48 na 125 kSa/s a oddělený síťový TX stav.
+- D-Star síťový přenos znovu otevírá nový stream po ukončení předchozího
+  a nečeká zbytečně 1,6 s.
+- DStarBridge potlačuje falešné mikro-talkery `OK1LBC-DS` pomocí
+  třírámcového startovního filtru a jednorámcového look-behind bufferu.
+- Čistý sedmidenní soak: 168 h, 20 075 vzorků, 0 restartů aplikace,
+  0 změn boot ID, stabilní počet 17 vláken.
+
+Release assety:
+
+- `sx1255-multimode_1.0.0-rc7_arm64.deb`
+- `sx1255-spdif-1.0.tar.gz`
+- `genericstereoaudiocodec.dtbo`
+
 ## v1.0.0-rc6 — M17 MER a úspora CPU
 
 Release rc6 zpřesňuje kvalitu M17 příjmu a výrazně snižuje zatížení
@@ -73,7 +97,8 @@ a režimy (FM+CTCSS, D-Star, M17) jako nezávislé pluginy.
 
 ## Stav release
 
-**v1.0.0-rc6** — M17 stream bez falešných BER skoků, MER dashboard
+**v1.0.0-rc7** — stock kernel, stabilní D-Star streamy a čistý sedmidenní
+operational soak. M17 MER dashboard
 a klidová CPU úspora. Zachovává D-Star RX→TX převaděč, DSRP gateway
 a hotspot režim pro DCS/XLX.
 
@@ -81,6 +106,11 @@ Release obsahuje i instalační assety:
 
 - `rpi-zero2-kernel-6.18.54-myzero2+.deb`
 - `genericstereoaudiocodec.dtbo`
+
+> **Bezpečnostní upozornění:** kernel `6.18.54-myzero2+` z tohoto staršího
+> release už nepoužívej. Aktuální postup používá oficiální
+> `linux-image-rpi-v8` s bezpečnostními opravami a DKMS moduly
+> `kernel/sx1255-spdif`.
 
 ## Hlavní schopnosti
 
@@ -97,14 +127,14 @@ Release obsahuje i instalační assety:
 Viz `docs/DEPLOYMENT.md`. Zkráceně:
 
 ```text
-sudo apt install ./sx1255-multimode_1.0.0-rc6_arm64.deb
+sudo apt install ./sx1255-multimode_1.0.0-rc7_arm64.deb
 sudo systemctl status sx1255-multimode
 ```
 
-Kernel a overlay se instalují z assetů tohoto release:
+Kernel a overlay se instalují podle aktuálního `docs/DEPLOYMENT.md`:
 
 ```text
-sudo apt install ./rpi-zero2-kernel-6.18.54-myzero2+.deb
+sudo apt install linux-image-rpi-v8 linux-headers-rpi-v8 dkms
 sudo install -m 0644 genericstereoaudiocodec.dtbo \
   /boot/firmware/overlays/genericstereoaudiocodec.dtbo
 ```

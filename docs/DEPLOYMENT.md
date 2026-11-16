@@ -21,35 +21,29 @@ samostatné I2S/SPI rozhraní. Stockový Raspberry Pi kernel 125 kHz neumí
 
 ### Kde vzít připravené soubory
 
-Kernel i zkompilovaný overlay jsou přiložené jako assety release
-[v1.0.0-rc6](https://github.com/karelxkk/sx1255-multimode/releases/tag/v1.0.0-rc6):
+Historický `rpi-zero2-kernel-6.18.54-myzero2+.deb` z release v1.0.0-rc6 už
+nepoužívej. Aktuální postup používá oficiální bezpečnostní kernel Raspberry Pi
+a DKMS zdroj `kernel/sx1255-spdif`; zkompilovaný overlay
+`genericstereoaudiocodec.dtbo` zůstává použitelný.
 
-- `rpi-zero2-kernel-6.18.54-myzero2+.deb`
-- `genericstereoaudiocodec.dtbo`
-
-Stažení na Pi Zero 2 W:
-
-```text
-RELEASE=https://github.com/karelxkk/sx1255-multimode/releases/download/v1.0.0-rc6
-curl -L -O "$RELEASE/rpi-zero2-kernel-6.18.54-myzero2%2B.deb"
-curl -L -O "$RELEASE/genericstereoaudiocodec.dtbo"
-```
-
-Příkaz pro vlastní překlad overlaye ze zdrojového souboru
-`genericstereoaudiocodec.dts` je uveden níže.
-
-1. **Kernel s patchem** `0001-ASoC-allow-125000-Hz-CONTINUOUS-for-sx1255_sound.patch`
-   (kořen repozitáře). Připravený balíček pro Pi Zero 2 W je
-   `rpi-zero2-kernel-6.18.54-myzero2+.deb` z výše uvedeného release:
+1. **Oficiální kernel a DKMS moduly pro Pi Zero 2 W**:
 
    ```text
-   sudo apt install ./rpi-zero2-kernel-6.18.54-myzero2+.deb
-   sudo reboot
+   sudo apt update
+   sudo apt install linux-image-rpi-v8 linux-headers-rpi-v8 dkms
+
+   sudo install -d -m 0755 /usr/src/sx1255-spdif-1.0
+   sudo install -m 0644 \
+     kernel/sx1255-spdif/{Makefile,dkms.conf,spdif_receiver.c,spdif_transmitter.c} \
+     /usr/src/sx1255-spdif-1.0/
+   sudo dkms add -m sx1255-spdif -v 1.0
+   sudo dkms build -m sx1255-spdif -v 1.0 -k "$(uname -r)"
+   sudo dkms install -m sx1255-spdif -v 1.0 -k "$(uname -r)" --force
    ```
 
-   Při vlastním sestavení kernelu aplikuj patch na
-   `sound/soc/codecs/spdif_receiver.c` a `spdif_transmitter.c`
-   (`SNDRV_PCM_RATE_CONTINUOUS` + `rate_min`/`rate_max`).
+   Po rebootu musí `uname -r` odpovídat nainstalovanému `rpt-rpi-v8` kernelu.
+   Ověřeno na `6.18.60+rpt-rpi-v8`; DKMS zajišťuje rebuild při dalších
+   kernel aktualizacích.
 
 2. **Overlay `genericstereoaudiocodec`** — připravený
    `genericstereoaudiocodec.dtbo` je v release; nainstaluj ho:
@@ -80,9 +74,14 @@ Příkaz pro vlastní překlad overlaye ze zdrojového souboru
 
    ```text
    sudo reboot
+   uname -r          # 6.18.60+rpt-rpi-v8 nebo novější
+   sudo dkms status
    aplay -l          # karta "GenericStereoAudioCodec" / GenericStereoAu
    arecord -l
    ```
+
+   `hw_params` aktivního SX1255 PCM musí obsahovat
+   `format: S32_LE`, `channels: 2` a `rate: 125000`.
 
    Očekávané ALSA zařízení (viz `SX1255_HARDWARE.md`):
 

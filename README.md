@@ -69,10 +69,9 @@ stanice; výchozí `auto` používá naposledy použitý lokální mód.
 - na Raspberry Pi 5 / Pi 500 stačí stock kernel a overlay
   `sx1255-pi5-duplex`; ověřený postup je v
   [docs/RPI5_SX1255_HAT.md](docs/RPI5_SX1255_HAT.md),
-- na Raspberry Pi Zero 2 W je potřeba kernel s podporou I2S vzorkování
-  **125 000 Hz** (patch
-  `0001-ASoC-allow-125000-Hz-CONTINUOUS-for-sx1255_sound.patch`, balíček
-  `rpi-zero2-kernel-6.18.54-myzero2+.deb`) a overlay
+- na Raspberry Pi Zero 2 W použij aktuální bezpečnostní Raspberry Pi kernel
+  (`linux-image-rpi-v8` / `linux-headers-rpi-v8`, ověřeno `6.18.60`), DKMS
+  moduly z `kernel/sx1255-spdif` pro I2S **125 000 Hz** a overlay
   `genericstereoaudiocodec`,
 - pro Pi Zero 2 W v `config.txt`:
 
@@ -84,11 +83,10 @@ stanice; výchozí `auto` používá naposledy použitý lokální mód.
 
 - pro `fm.backend: svxlink` navíc modul `snd-aloop`.
 
-Pro Pi Zero 2 W jsou oba soubory
-(`rpi-zero2-kernel-6.18.54-myzero2+.deb` a
-`genericstereoaudiocodec.dtbo`) přiložené jako assety GitHub release
-[v1.0.0-rc6](https://github.com/karelxkk/sx1255-multimode/releases/tag/v1.0.0-rc6).
-Odkazy pro stažení jsou vypsané v [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Historický `rpi-zero2-kernel-6.18.54-myzero2+.deb` z release v1.0.0-rc6 už
+nepoužívej: nahradil ho oficiální kernel s bezpečnostními opravami a DKMS
+modulem `sx1255-spdif`. Aktuální postup je v
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Postup instalace pro Pi Zero 2 W viz [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md),
 pro Pi 5 / Pi 500 viz [docs/RPI5_SX1255_HAT.md](docs/RPI5_SX1255_HAT.md).
@@ -141,7 +139,7 @@ m17_afc_audit      AFC trace pro srovnání s původním m17-gateway
 Deb balíček pro nasazení:
 
 ```text
-scripts/build_deb.sh        # -> sx1255-multimode_1.0.0-rc6_arm64.deb
+scripts/build_deb.sh        # -> sx1255-multimode_1.0.0-rc7_arm64.deb
 ```
 
 CLI démona:

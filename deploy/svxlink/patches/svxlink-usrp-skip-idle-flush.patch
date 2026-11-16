@@ -1,0 +1,83 @@
+diff --git a/src/svxlink/svxlink/contrib/UsrpLogic/UsrpLogic.cpp b/src/svxlink/svxlink/contrib/UsrpLogic/UsrpLogic.cpp
+index fb10bf64..f5cee7b7 100644
+--- a/src/svxlink/svxlink/contrib/UsrpLogic/UsrpLogic.cpp
++++ b/src/svxlink/svxlink/contrib/UsrpLogic/UsrpLogic.cpp
+@@ -743,15 +743,43 @@ void UsrpLogic::handleVoiceStream(UsrpAudioMsg usrp)
+   {
+     m_audio_data[i] = ntohs(usrp.audioData()[i]);
+   }
+-  m_dec->writeEncodedSamples(&m_audio_data, 
+-                        sizeof(int16_t)*USRP_AUDIO_FRAME_LEN);
++
++  // Keep one frame back and require three continuous frames before
++  // publishing anything to the linked logic. Short stale stream tails must
++  // not become a new DStarBridge talker on SvxReflector.
++  m_pending_incoming_audio.push_back(m_audio_data);
++  if (!m_incoming_audio_established)
++  {
++    if (m_pending_incoming_audio.size() < 3)
++    {
++      return;
++    }
++    m_incoming_audio_established = true;
++  }
++  while (m_pending_incoming_audio.size() > 1)
++  {
++    const auto& frame = m_pending_incoming_audio.front();
++    m_dec->writeEncodedSamples(const_cast<int16_t*>(frame.data()),
++        sizeof(int16_t)*USRP_AUDIO_FRAME_LEN);
++    m_pending_incoming_audio.pop_front();
++  }
+ } /* UsrpLogic::handleVoiceStream */
+ 
+ 
+ void UsrpLogic::handleStreamStop(void)
+ {
+-  m_dec->flushEncodedSamples();
++  m_pending_incoming_audio.clear();
++  // URFD sends a key-up after every source stream. If no PCM was delivered
++  // toward the linked logic, flushing the decoder still creates a flush-only
++  // audio event. DStarBridge turns that into a zero-length local talker on
++  // SvxReflector under this node's callsign. Only flush an actually active
++  // inbound audio stream.
++  if (m_logic_con_out->isActive())
++  {
++    m_dec->flushEncodedSamples();
++  }
+   checkIdle();
++  m_incoming_audio_established = false;
+   m_enc->allEncodedSamplesFlushed();
+   timerclear(&m_last_talker_timestamp);
+ 
+@@ -936,6 +964,8 @@ void UsrpLogic::handleTimerTick(Async::Timer *t)
+     if (diff.tv_sec > 3)
+     {
+       cout << name() << ": Last talker audio timeout" << endl;
++      m_pending_incoming_audio.clear();
++      m_incoming_audio_established = false;
+       m_dec->flushEncodedSamples();
+       timerclear(&m_last_talker_timestamp);
+     }
+diff --git a/src/svxlink/svxlink/contrib/UsrpLogic/UsrpLogic.h b/src/svxlink/svxlink/contrib/UsrpLogic/UsrpLogic.h
+index d920898b..03685117 100644
+--- a/src/svxlink/svxlink/contrib/UsrpLogic/UsrpLogic.h
++++ b/src/svxlink/svxlink/contrib/UsrpLogic/UsrpLogic.h
+@@ -35,6 +35,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  ****************************************************************************/
+ 
+ #include <sys/time.h>
++#include <array>
++#include <deque>
+ #include <iostream>
+ #include <string>
+ 
+@@ -194,6 +196,9 @@ class UsrpLogic : public LogicBase
+     Async::AudioStreamStateDetector*  m_logic_con_in;
+     Async::AudioStreamStateDetector*  m_logic_con_out;
+     Async::AudioDecoder*              m_dec;
++    std::deque<std::array<int16_t, USRP_AUDIO_FRAME_LEN>>
++                                      m_pending_incoming_audio;
++    bool                              m_incoming_audio_established = false;
+     Async::Timer                      m_flush_timeout_timer;
+     struct timeval                    m_last_talker_timestamp;
+     Async::AudioEncoder*              m_enc;

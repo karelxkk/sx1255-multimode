@@ -129,6 +129,8 @@ install(PROGRAMS scripts/record_dataset.sh scripts/rc1_validate.sh scripts/deplo
 
 install(FILES README.md CHANGELOG.md RELEASE_NOTES.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/sx1255-multimode)
+install(FILES rc3-soak-report.md
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/sx1255-multimode)
 install(FILES docs/DEPLOYMENT.md docs/RPI5_SX1255_HAT.md
               docs/SX1255_HARDWARE.md
               docs/POWER_SAVE.md docs/OPERATIONAL_SOAK.md
@@ -138,6 +140,17 @@ install(FILES docs/DEPLOYMENT.md docs/RPI5_SX1255_HAT.md
 
 install(FILES deploy/svxlink/svxlink.conf deploy/svxlink/README.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/sx1255-multimode/svxlink)
+install(FILES deploy/svxlink/patches/svxlink-usrp-skip-idle-flush.patch
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/sx1255-multimode/svxlink/patches)
 
 install(FILES deploy/overlays/sx1255-pi5-duplex.dts
         DESTINATION ${CMAKE_INSTALL_DATADIR}/sx1255-multimode/overlays)
+install(FILES deploy/overlays/genericstereoaudiocodec.dts
+              deploy/overlays/genericstereoaudiocodec.dtbo
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/sx1255-multimode/overlays)
+install(FILES kernel/sx1255-spdif/Makefile
+              kernel/sx1255-spdif/README.md
+              kernel/sx1255-spdif/dkms.conf
+              kernel/sx1255-spdif/spdif_receiver.c
+              kernel/sx1255-spdif/spdif_transmitter.c
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/sx1255-multimode/kernel/sx1255-spdif)

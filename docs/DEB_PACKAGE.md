@@ -1,6 +1,6 @@
 # Debian balíček a nasazení
 
-Připravený balíček: `sx1255-multimode_1.0.0-rc6_arm64.deb`
+Připravený balíček: `sx1255-multimode_1.0.0-rc7_arm64.deb`
 
 Cílová architektura je **arm64** — Raspberry Pi Zero 2 W s 64bitovým
 Raspberry Pi OS (Bookworm/Trixie). Pro 32bitový OS by se balíček stavěl jako
@@ -16,6 +16,8 @@ Raspberry Pi OS (Bookworm/Trixie). Pro 32bitový OS by se balíček stavěl jako
 /etc/sx1255-multimode/sx1255-multimode.yaml   konfigurace (conffile)
 /lib/systemd/system/sx1255-multimode.service  systemd služba
 /usr/share/sx1255-multimode/scripts/          záznam datasetů, RC1 validace, deploy test
+/usr/share/sx1255-multimode/kernel/sx1255-spdif/  DKMS zdroje pro stock kernel
+/usr/share/sx1255-multimode/overlays/         genericstereoaudiocodec a Pi 5 overlay
 /usr/share/doc/sx1255-multimode/              README, CHANGELOG, RELEASE_NOTES, copyright
 ```
 
@@ -30,18 +32,18 @@ Na stroji s `dpkg-deb`, `cmake`, `ninja` a `g++`:
 scripts/build_deb.sh
 ```
 
-Výsledek: `sx1255-multimode_1.0.0-rc6_arm64.deb`.
+Výsledek: `sx1255-multimode_1.0.0-rc7_arm64.deb`.
 
 ## 2. Přenos na Raspberry Pi Zero 2 W
 
 ```text
-scp sx1255-multimode_1.0.0-rc6_arm64.deb user@<ip-pi>:~/
+scp sx1255-multimode_1.0.0-rc7_arm64.deb user@<ip-pi>:~/
 ```
 
 ## 3. Instalace
 
 ```text
-sudo apt-get install -y ./sx1255-multimode_1.0.0-rc6_arm64.deb
+sudo apt-get install -y ./sx1255-multimode_1.0.0-rc7_arm64.deb
 ```
 
 Případné chybějící závislosti:

@@ -178,7 +178,7 @@ playback: hw:SX1255I2S,0,0
 Doporučená instalace z balíčku:
 
 ```bash
-sudo apt-get install -y ./sx1255-multimode_1.0.0-rc6_arm64.deb
+sudo apt-get install -y ./sx1255-multimode_1.0.0-rc7_arm64.deb
 ```
 
 Alternativa z aktuálního zdrojového stromu:

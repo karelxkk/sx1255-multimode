@@ -3,9 +3,10 @@
 Dokumentace reálného frontendu `SX1255Hardware`, který nahrazuje `NullSX1255`
 a implementuje rozhraní `ISX1255` (SPI + libgpiod + ALSA).
 
-> **Kernel a overlay:** připravené `rpi-zero2-kernel-6.18.54-myzero2+.deb` a
-> `genericstereoaudiocodec.dtbo` jsou assety release v1.0.0-rc6. Instalace je
-> popsána v [DEPLOYMENT.md](DEPLOYMENT.md).
+> **Kernel a overlay:** na Pi Zero 2 W použij aktuální bezpečnostní Raspberry
+> Pi kernel `linux-image-rpi-v8`, DKMS zdroj `kernel/sx1255-spdif` a overlay
+> `genericstereoaudiocodec`. Historický kernel `6.18.54-myzero2+` už
+> nepoužívej. Instalace je popsána v [DEPLOYMENT.md](DEPLOYMENT.md).
 >
 > **Raspberry Pi 5 / Pi 500:** použij stock kernel a overlay
 > `sx1255-pi5-duplex`; úplný postup je v

@@ -2,7 +2,7 @@
 
 Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
-## [Nepublikováno]
+## [1.0.0-rc7] — 2026-11-16
 
 ### Přidáno
 
@@ -13,12 +13,20 @@ Všechny podstatné změny projektu `sx1255-multimode` jsou zaznamenány zde.
 
 ### Dokumentace
 
-- Zaznamenán první dokončený sedmidenní operational soak. Obsahoval 46
-  testovacích restartů, takže čistý PASS nebyl potvrzen; navazující běh bez
-  plánovaných restartů byl zahájen 2026-11-04. Viz `rc1-soak-report.md`.
+- Zaznamenán čistý sedmidenní operational soak od 2026-11-09 do 2026-11-16:
+  20 075 vzorků, 0 restartů aplikace, 0 změn boot ID a stabilní počet vláken.
+  Viz `rc3-soak-report.md`.
 
 ### Opraveno
 
+- D-Star bridge potlačuje falešné mikro-talkery `OK1LBC-DS`: příchozí USRP
+  audio se publikuje až po třech spojitých rámcích a poslední rámec zůstává
+  v jednorámcovém look-behind bufferu, takže se při `KEYUP_FALSE` nezahodí
+  jako nový Talker na SvxReflectoru.
+- Raspberry Pi Zero 2 W přešel z vlastního kernelu `6.18.54-myzero2+` na
+  oficiální bezpečnostní `6.18.60+rpt-rpi-v8`. Podpora SX1255 125 kSa/s je
+  nově v DKMS modulech `kernel/sx1255-spdif`, které se přebuildí při dalších
+  kernel aktualizacích.
 - D-Star RX front-end používá 7,5 kHz kanálový filtr, decimaci 125 → 25 kSa/s
   a lineární převzorkování na 48 kSa/s. Přidána měřená volba `dstar.rx_invert`
   (default `true`) pro správnou polaritu SX1255 a offline audit IQ.
